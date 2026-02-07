@@ -2,9 +2,7 @@ import type { TitelInput } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
 import { DrukkostenSection } from './DrukkostenSection';
-import { ProductiekostenSection } from './ProductiekostenSection';
-import { OfflineMarketingSection } from './OfflineMarketingSection';
-import { OnlineMarketingSection } from './OnlineMarketingSection';
+import { KostenpostenSection } from './KostenpostenSection';
 import { WebshopKostenSection } from './WebshopKostenSection';
 import { RetailKostenSection } from './RetailKostenSection';
 import { B2bKostenSection } from './B2bKostenSection';
@@ -24,6 +22,17 @@ interface Props {
   setVerdeling: (v: { webshop: number; retail: number; b2b: number }) => void;
 }
 
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 pt-3 pb-1 px-1">
+      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+        {children}
+      </span>
+      <div className="flex-1 h-px bg-gray-200" />
+    </div>
+  );
+}
+
 export function CalculatieForm({
   titelInput, updateField,
   herdrukOplages, setHerdrukOplages,
@@ -31,27 +40,27 @@ export function CalculatieForm({
 }: Props) {
   return (
     <div className="space-y-1">
+      {/* ─── TITEL & BOEK ─── */}
       <Section title="Basisgegevens" defaultOpen>
         <BasisgegevensSection titelInput={titelInput} updateField={updateField} />
       </Section>
+
+      {/* ─── PRODUCTIE & KOSTEN ─── */}
+      <GroupLabel>Productie &amp; kosten</GroupLabel>
 
       <Section title="Drukkosten">
         <DrukkostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
-      <Section
-        title="Productiekosten"
-        subtitle="eenmalig"
-      >
-        <ProductiekostenSection titelInput={titelInput} updateField={updateField} />
+      <Section title="Kostenposten" subtitle="drag &amp; drop" defaultOpen>
+        <KostenpostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
-      <Section title="Offline marketing" subtitle="eenmalig">
-        <OfflineMarketingSection titelInput={titelInput} updateField={updateField} />
-      </Section>
+      {/* ─── VERKOOPKANALEN ─── */}
+      <GroupLabel>Verkoopkanalen</GroupLabel>
 
-      <Section title="Online marketing">
-        <OnlineMarketingSection titelInput={titelInput} updateField={updateField} />
+      <Section title="Verdeling kanalen" defaultOpen>
+        <VerdelingSection verdeling={verdeling} setVerdeling={setVerdeling} />
       </Section>
 
       <Section title="Webshop kosten">
@@ -66,6 +75,9 @@ export function CalculatieForm({
         <B2bKostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
+      {/* ─── DEALS & PARTNERS ─── */}
+      <GroupLabel>Deals &amp; partners</GroupLabel>
+
       <Section title="Auteur deal" defaultOpen>
         <AuteurDealSection titelInput={titelInput} updateField={updateField} />
       </Section>
@@ -78,6 +90,9 @@ export function CalculatieForm({
         <PartnershipSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
+      {/* ─── OVERIG ─── */}
+      <GroupLabel>Overig</GroupLabel>
+
       <Section title="Overige kosten">
         <OverigeKostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
@@ -87,10 +102,6 @@ export function CalculatieForm({
           herdrukOplages={herdrukOplages}
           setHerdrukOplages={setHerdrukOplages}
         />
-      </Section>
-
-      <Section title="Verdeling kanalen" defaultOpen>
-        <VerdelingSection verdeling={verdeling} setVerdeling={setVerdeling} />
       </Section>
     </div>
   );

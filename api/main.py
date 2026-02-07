@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes import calculate, sensitivity, validate, export
+from .routes import calculate, sensitivity, validate, export, titels
 
 app = FastAPI(
     title="Maven Calculatie",
@@ -23,6 +23,7 @@ app.include_router(calculate.router, prefix="/api", tags=["calculate"])
 app.include_router(sensitivity.router, prefix="/api", tags=["sensitivity"])
 app.include_router(validate.router, prefix="/api", tags=["validate"])
 app.include_router(export.router, prefix="/api", tags=["export"])
+app.include_router(titels.router, prefix="/api", tags=["titels"])
 
 
 @app.get("/api/health")

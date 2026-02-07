@@ -9,8 +9,18 @@ class StaffelTredeSchema(BaseModel):
     percentage: float  # bijv. 0.06 voor 6%
 
 
+class KostenPostSchema(BaseModel):
+    id: str
+    naam: str
+    categorie: str  # "productie" | "offline_marketing" | "online_marketing"
+    type: str        # "eenmalig" | "terugkerend"
+    bedrag: float = 0.0
+
+
 class TitelInputSchema(BaseModel):
     titel: str = "Nieuwe titel"
+    isbn: str = ""
+    druknummer: int = 1
 
     # Basisgegevens
     verkoopprijs_incl_btw: float = 20.0
@@ -67,7 +77,9 @@ class TitelInputSchema(BaseModel):
     agent_staffel: list[StaffelTredeSchema] = []
     agent_pct: float = 0.0
     vertaler_pct: float = 0.0
+    vertaler_staffel: list[StaffelTredeSchema] = []
     illustrator_pct: float = 0.0
+    illustrator_staffel: list[StaffelTredeSchema] = []
 
     # Partnership
     heeft_partner: bool = False
@@ -75,6 +87,10 @@ class TitelInputSchema(BaseModel):
 
     # Overige
     overige_kosten_pct: float = 0.0
+
+    # Flexibele kostenposten (v2)
+    kostenposten: list[KostenPostSchema] = []
+    gebruik_kostenposten: bool = False
 
 
 # ── Request / Response ──

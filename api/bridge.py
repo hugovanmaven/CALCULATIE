@@ -10,11 +10,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from calculatie import (
-    TitelInput, StaffelTrede, bereken_titel,
+    TitelInput, StaffelTrede, KostenPost, bereken_titel,
     CalculatieResultaat, DrukResultaat, KanaalResultaat,
 )
 from .models import (
-    TitelInputSchema, StaffelTredeSchema,
+    TitelInputSchema, StaffelTredeSchema, KostenPostSchema,
     CalculateRequest, CalculateResponse,
     DrukResultaatSchema, KanaalResultaatSchema,
 )
@@ -24,6 +24,8 @@ def schema_to_dataclass(s: TitelInputSchema) -> TitelInput:
     """Converteer Pydantic TitelInputSchema → calculatie.py TitelInput."""
     return TitelInput(
         titel=s.titel,
+        isbn=s.isbn,
+        druknummer=s.druknummer,
         verkoopprijs_incl_btw=s.verkoopprijs_incl_btw,
         btw_percentage=s.btw_percentage,
         boekhandelskorting=s.boekhandelskorting,
@@ -66,10 +68,23 @@ def schema_to_dataclass(s: TitelInputSchema) -> TitelInput:
         ],
         agent_pct=s.agent_pct,
         vertaler_pct=s.vertaler_pct,
+        vertaler_staffel=[
+            StaffelTrede(t.tot_exemplaren, t.percentage)
+            for t in s.vertaler_staffel
+        ],
         illustrator_pct=s.illustrator_pct,
+        illustrator_staffel=[
+            StaffelTrede(t.tot_exemplaren, t.percentage)
+            for t in s.illustrator_staffel
+        ],
         heeft_partner=s.heeft_partner,
         partner_naam=s.partner_naam,
         overige_kosten_pct=s.overige_kosten_pct,
+        kostenposten=[
+            KostenPost(id=kp.id, naam=kp.naam, categorie=kp.categorie, type=kp.type, bedrag=kp.bedrag)
+            for kp in s.kostenposten
+        ],
+        gebruik_kostenposten=s.gebruik_kostenposten,
     )
 
 

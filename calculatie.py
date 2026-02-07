@@ -32,13 +32,29 @@ class StaffelTrede:
 
 
 @dataclass
+class KostenPost:
+    """Eén kostenpost met flexibel eenmalig/terugkerend type.
+
+    type = "eenmalig"    → gespreid over 1e druk, 0 bij herdruk
+    type = "terugkerend" → gespreid over élke druk z'n eigen oplage
+    """
+    id: str               # "vormgeving_omslag" (default) of UUID (custom)
+    naam: str             # "Vormgeving omslag"
+    categorie: str        # "productie" | "offline_marketing" | "online_marketing"
+    type: str             # "eenmalig" | "terugkerend"
+    bedrag: float = 0.0
+
+
+@dataclass
 class TitelInput:
     """Alle invoergegevens voor één titel."""
 
     titel: str
+    isbn: str = ""                       # ISBN-13
+    druknummer: int = 1                  # 1 = 1e druk, 2 = herdruk, etc.
 
     # ── Basisgegevens ──
-    verkoopprijs_incl_btw: float       # bijv. 17.50
+    verkoopprijs_incl_btw: float = 0.0  # bijv. 17.50
     btw_percentage: float = 0.09       # standaard 9% (boeken)
     boekhandelskorting: float = 0.48   # korting voor boekhandel/CB
     oplage_1e_druk: int = 2000
@@ -96,10 +112,12 @@ class TitelInput:
     agent_pct: float = 0.0
 
     # ── Derden: vertaler ──
-    vertaler_pct: float = 0.0           # % van verkoopprijs ex BTW
+    vertaler_pct: float = 0.0           # % van verkoopprijs ex BTW (als geen staffel)
+    vertaler_staffel: list[StaffelTrede] = field(default_factory=list)
 
     # ── Derden: illustrator ──
-    illustrator_pct: float = 0.0        # % van verkoopprijs ex BTW
+    illustrator_pct: float = 0.0        # % van verkoopprijs ex BTW (als geen staffel)
+    illustrator_staffel: list[StaffelTrede] = field(default_factory=list)
 
     # ── Partnership ──
     heeft_partner: bool = False          # ja = 50-50 netto winst deling
@@ -107,6 +125,12 @@ class TitelInput:
 
     # ── Overige kosten (percentage van netto omzet) ──
     overige_kosten_pct: float = 0.0
+
+    # ── Flexibele kostenposten (v2) ──
+    # Als gebruik_kostenposten=True, worden kostenposten lijst gebruikt
+    # i.p.v. de individuele productie/marketing velden hierboven.
+    kostenposten: list[KostenPost] = field(default_factory=list)
+    gebruik_kostenposten: bool = False
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -295,6 +319,16 @@ def bereken_online_marketing(t: TitelInput) -> float:
     )
 
 
+def bereken_kostenposten_totalen(kostenposten: list[KostenPost]) -> tuple[float, float]:
+    """Bereken totalen voor eenmalige en terugkerende kostenposten.
+
+    Returns: (totaal_eenmalig, totaal_terugkerend)
+    """
+    totaal_eenmalig = sum(kp.bedrag for kp in kostenposten if kp.type == "eenmalig")
+    totaal_terugkerend = sum(kp.bedrag for kp in kostenposten if kp.type == "terugkerend")
+    return totaal_eenmalig, totaal_terugkerend
+
+
 def bereken_kanaal(
     t: TitelInput,
     kanaal: str,
@@ -304,6 +338,9 @@ def bereken_kanaal(
     online_mkt_per_ex: float,
     cumulatief_verkocht: int,
     oplage: int,
+    # v2: flexibele kostenposten — als gezet, overschrijven productie/offline/online
+    eenmalig_per_ex: float | None = None,
+    terugkerend_per_ex: float | None = None,
 ) -> KanaalResultaat:
     """
     Berekent de marge per exemplaar voor één kanaal.
@@ -360,14 +397,21 @@ def bereken_kanaal(
     # a) Drukkosten
     r.drukkosten = t.drukkosten_herdruk if is_herdruk else t.drukkosten_1e_druk
 
-    # b) Productie per exemplaar (0 bij herdruk)
-    r.productie_per_ex = 0.0 if is_herdruk else productie_per_ex
+    if eenmalig_per_ex is not None and terugkerend_per_ex is not None:
+        # v2: flexibele kostenposten pad
+        r.productie_per_ex = 0.0 if is_herdruk else eenmalig_per_ex
+        r.offline_marketing_per_ex = 0.0  # niet apart nodig — zit in eenmalig_per_ex
+        r.online_marketing_per_ex = terugkerend_per_ex
+    else:
+        # Legacy pad: hardcoded eenmalig/terugkerend
+        # b) Productie per exemplaar (0 bij herdruk)
+        r.productie_per_ex = 0.0 if is_herdruk else productie_per_ex
 
-    # c) Offline marketing per exemplaar (0 bij herdruk)
-    r.offline_marketing_per_ex = 0.0 if is_herdruk else offline_mkt_per_ex
+        # c) Offline marketing per exemplaar (0 bij herdruk)
+        r.offline_marketing_per_ex = 0.0 if is_herdruk else offline_mkt_per_ex
 
-    # d) Online marketing per exemplaar (altijd)
-    r.online_marketing_per_ex = online_mkt_per_ex
+        # d) Online marketing per exemplaar (altijd)
+        r.online_marketing_per_ex = online_mkt_per_ex
 
     # e) Kanaal-specifiek
     if kanaal == "webshop":
@@ -380,8 +424,21 @@ def bereken_kanaal(
         r.b2b_porto = t.b2b_porto_per_ex
 
     # f) Derden
-    r.vertaler = r.verkoopprijs_ex_btw * t.vertaler_pct
-    r.illustrator = r.verkoopprijs_ex_btw * t.illustrator_pct
+    # Vertaler: staffel of vast percentage
+    if t.vertaler_staffel:
+        r.vertaler = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
+            t.vertaler_staffel, cumulatief_verkocht + 1, oplage
+        )
+    else:
+        r.vertaler = r.verkoopprijs_ex_btw * t.vertaler_pct
+
+    # Illustrator: staffel of vast percentage
+    if t.illustrator_staffel:
+        r.illustrator = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
+            t.illustrator_staffel, cumulatief_verkocht + 1, oplage
+        )
+    else:
+        r.illustrator = r.verkoopprijs_ex_btw * t.illustrator_pct
 
     # Agent: staffel of vast percentage
     if t.agent_staffel:
@@ -455,70 +512,131 @@ def bereken_titel(
     """
     res = CalculatieResultaat(titel=t.titel)
 
-    # Bereken eenmalige kosten
-    totaal_productie = bereken_eenmalige_productie(t)
-    totaal_offline_mkt = bereken_eenmalige_offline_marketing(t)
-    totaal_online_mkt = bereken_online_marketing(t)
+    # Drukkosten totaal 1e druk
     druk_totaal = t.drukkosten_1e_druk * t.oplage_1e_druk
-
-    res.totaal_productie = totaal_productie
-    res.totaal_offline_marketing = totaal_offline_mkt
-    res.totaal_online_marketing = totaal_online_mkt
     res.drukkosten_totaal_1e = druk_totaal
 
-    # Per exemplaar verdeeld over 1e druk oplage
-    if t.oplage_1e_druk > 0:
-        productie_per_ex = totaal_productie / t.oplage_1e_druk
-        offline_mkt_per_ex = totaal_offline_mkt / t.oplage_1e_druk
-        online_mkt_per_ex = totaal_online_mkt / t.oplage_1e_druk
-    else:
-        productie_per_ex = offline_mkt_per_ex = online_mkt_per_ex = 0.0
+    if t.gebruik_kostenposten and t.kostenposten:
+        # ═══ v2: FLEXIBELE KOSTENPOSTEN PAD ═══
+        totaal_eenmalig, totaal_terugkerend = bereken_kostenposten_totalen(t.kostenposten)
 
-    # ── 1e druk ──
-    druk1 = DrukResultaat(
-        druk_type="1e druk",
-        oplage=t.oplage_1e_druk,
-        cumulatief_voor_druk=0,
-    )
-    for kanaal in ["webshop", "retail", "b2b"]:
-        result = bereken_kanaal(
-            t, kanaal, is_herdruk=False,
-            productie_per_ex=productie_per_ex,
-            offline_mkt_per_ex=offline_mkt_per_ex,
-            online_mkt_per_ex=online_mkt_per_ex,
-            cumulatief_verkocht=0,
+        # Bewaar subtotalen per categorie voor weergave
+        res.totaal_productie = sum(kp.bedrag for kp in t.kostenposten if kp.categorie == "productie")
+        res.totaal_offline_marketing = sum(kp.bedrag for kp in t.kostenposten if kp.categorie == "offline_marketing")
+        res.totaal_online_marketing = sum(kp.bedrag for kp in t.kostenposten if kp.categorie == "online_marketing")
+
+        # Per exemplaar
+        if t.oplage_1e_druk > 0:
+            eenmalig_per_ex = totaal_eenmalig / t.oplage_1e_druk
+            terugkerend_per_ex = totaal_terugkerend / t.oplage_1e_druk
+        else:
+            eenmalig_per_ex = terugkerend_per_ex = 0.0
+
+        # ── 1e druk ──
+        druk1 = DrukResultaat(
+            druk_type="1e druk",
             oplage=t.oplage_1e_druk,
+            cumulatief_voor_druk=0,
         )
-        setattr(druk1, kanaal, result)
-    res.drukken.append(druk1)
-
-    # ── Herdrukken ──
-    if herdruk_oplages:
-        cumulatief = t.oplage_1e_druk
-        for i, herdruk_opl in enumerate(herdruk_oplages, start=2):
-            # Online marketing per ex voor herdruk: verdeel over herdruk-oplage
-            if herdruk_opl > 0:
-                online_mkt_herdruk = totaal_online_mkt / herdruk_opl
-            else:
-                online_mkt_herdruk = 0.0
-
-            druk = DrukResultaat(
-                druk_type=f"{i}e druk",
-                oplage=herdruk_opl,
-                cumulatief_voor_druk=cumulatief,
+        for kanaal in ["webshop", "retail", "b2b"]:
+            result = bereken_kanaal(
+                t, kanaal, is_herdruk=False,
+                productie_per_ex=0.0, offline_mkt_per_ex=0.0, online_mkt_per_ex=0.0,
+                cumulatief_verkocht=0, oplage=t.oplage_1e_druk,
+                eenmalig_per_ex=eenmalig_per_ex,
+                terugkerend_per_ex=terugkerend_per_ex,
             )
-            for kanaal in ["webshop", "retail", "b2b"]:
-                result = bereken_kanaal(
-                    t, kanaal, is_herdruk=True,
-                    productie_per_ex=0.0,
-                    offline_mkt_per_ex=0.0,
-                    online_mkt_per_ex=online_mkt_herdruk,
-                    cumulatief_verkocht=cumulatief,
+            setattr(druk1, kanaal, result)
+        res.drukken.append(druk1)
+
+        # ── Herdrukken ──
+        if herdruk_oplages:
+            cumulatief = t.oplage_1e_druk
+            for i, herdruk_opl in enumerate(herdruk_oplages, start=2):
+                if herdruk_opl > 0:
+                    terugkerend_herdruk = totaal_terugkerend / herdruk_opl
+                else:
+                    terugkerend_herdruk = 0.0
+
+                druk = DrukResultaat(
+                    druk_type=f"{i}e druk",
                     oplage=herdruk_opl,
+                    cumulatief_voor_druk=cumulatief,
                 )
-                setattr(druk, kanaal, result)
-            res.drukken.append(druk)
-            cumulatief += herdruk_opl
+                for kanaal in ["webshop", "retail", "b2b"]:
+                    result = bereken_kanaal(
+                        t, kanaal, is_herdruk=True,
+                        productie_per_ex=0.0, offline_mkt_per_ex=0.0, online_mkt_per_ex=0.0,
+                        cumulatief_verkocht=cumulatief, oplage=herdruk_opl,
+                        eenmalig_per_ex=0.0,
+                        terugkerend_per_ex=terugkerend_herdruk,
+                    )
+                    setattr(druk, kanaal, result)
+                res.drukken.append(druk)
+                cumulatief += herdruk_opl
+
+    else:
+        # ═══ LEGACY PAD: hardcoded kostenvelden ═══
+        totaal_productie = bereken_eenmalige_productie(t)
+        totaal_offline_mkt = bereken_eenmalige_offline_marketing(t)
+        totaal_online_mkt = bereken_online_marketing(t)
+
+        res.totaal_productie = totaal_productie
+        res.totaal_offline_marketing = totaal_offline_mkt
+        res.totaal_online_marketing = totaal_online_mkt
+
+        # Per exemplaar verdeeld over 1e druk oplage
+        if t.oplage_1e_druk > 0:
+            productie_per_ex = totaal_productie / t.oplage_1e_druk
+            offline_mkt_per_ex = totaal_offline_mkt / t.oplage_1e_druk
+            online_mkt_per_ex = totaal_online_mkt / t.oplage_1e_druk
+        else:
+            productie_per_ex = offline_mkt_per_ex = online_mkt_per_ex = 0.0
+
+        # ── 1e druk ──
+        druk1 = DrukResultaat(
+            druk_type="1e druk",
+            oplage=t.oplage_1e_druk,
+            cumulatief_voor_druk=0,
+        )
+        for kanaal in ["webshop", "retail", "b2b"]:
+            result = bereken_kanaal(
+                t, kanaal, is_herdruk=False,
+                productie_per_ex=productie_per_ex,
+                offline_mkt_per_ex=offline_mkt_per_ex,
+                online_mkt_per_ex=online_mkt_per_ex,
+                cumulatief_verkocht=0,
+                oplage=t.oplage_1e_druk,
+            )
+            setattr(druk1, kanaal, result)
+        res.drukken.append(druk1)
+
+        # ── Herdrukken ──
+        if herdruk_oplages:
+            cumulatief = t.oplage_1e_druk
+            for i, herdruk_opl in enumerate(herdruk_oplages, start=2):
+                if herdruk_opl > 0:
+                    online_mkt_herdruk = totaal_online_mkt / herdruk_opl
+                else:
+                    online_mkt_herdruk = 0.0
+
+                druk = DrukResultaat(
+                    druk_type=f"{i}e druk",
+                    oplage=herdruk_opl,
+                    cumulatief_voor_druk=cumulatief,
+                )
+                for kanaal in ["webshop", "retail", "b2b"]:
+                    result = bereken_kanaal(
+                        t, kanaal, is_herdruk=True,
+                        productie_per_ex=0.0,
+                        offline_mkt_per_ex=0.0,
+                        online_mkt_per_ex=online_mkt_herdruk,
+                        cumulatief_verkocht=cumulatief,
+                        oplage=herdruk_opl,
+                    )
+                    setattr(druk, kanaal, result)
+                res.drukken.append(druk)
+                cumulatief += herdruk_opl
 
     return res
 

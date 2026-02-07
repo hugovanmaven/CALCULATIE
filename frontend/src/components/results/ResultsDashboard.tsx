@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { CalculateResponse } from '../../api/types';
+import type { CalculateResponse, TitelInput } from '../../api/types';
 import { SummaryTable } from './SummaryTable';
 import { DrukResultCard } from './DrukResultCard';
 import { WeightedMarginBar } from './WeightedMarginBar';
@@ -7,11 +7,12 @@ import { EenmaligOverzicht } from './EenmaligOverzicht';
 
 interface Props {
   results: CalculateResponse;
+  titelInput?: TitelInput;
 }
 
 type Tab = 'overzicht' | 'detail';
 
-export function ResultsDashboard({ results }: Props) {
+export function ResultsDashboard({ results, titelInput }: Props) {
   const [tab, setTab] = useState<Tab>('overzicht');
 
   return (
@@ -55,7 +56,7 @@ export function ResultsDashboard({ results }: Props) {
       {tab === 'overzicht' && (
         <div className="space-y-4">
           <SummaryTable results={results} />
-          <EenmaligOverzicht results={results} />
+          <EenmaligOverzicht results={results} titelInput={titelInput} />
         </div>
       )}
 
