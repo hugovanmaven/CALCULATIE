@@ -3,16 +3,17 @@ import type { CalculateResponse, TitelInput } from '../../api/types';
 import { SummaryTable } from './SummaryTable';
 import { DrukResultCard } from './DrukResultCard';
 import { WeightedMarginBar } from './WeightedMarginBar';
-import { EenmaligOverzicht } from './EenmaligOverzicht';
+import { MargeWaterfall } from './MargeWaterfall';
 
 interface Props {
   results: CalculateResponse;
   titelInput?: TitelInput;
+  verdeling: { webshop: number; retail: number; b2b: number };
 }
 
 type Tab = 'overzicht' | 'detail';
 
-export function ResultsDashboard({ results, titelInput }: Props) {
+export function ResultsDashboard({ results, verdeling }: Props) {
   const [tab, setTab] = useState<Tab>('overzicht');
 
   return (
@@ -56,7 +57,13 @@ export function ResultsDashboard({ results, titelInput }: Props) {
       {tab === 'overzicht' && (
         <div className="space-y-4">
           <SummaryTable results={results} />
-          <EenmaligOverzicht results={results} titelInput={titelInput} />
+          {results.drukken.map((druk) => (
+            <MargeWaterfall
+              key={druk.druk_type}
+              druk={druk}
+              verdeling={verdeling}
+            />
+          ))}
         </div>
       )}
 

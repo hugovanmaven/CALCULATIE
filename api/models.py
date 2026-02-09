@@ -21,6 +21,8 @@ class TitelInputSchema(BaseModel):
     titel: str = "Nieuwe titel"
     isbn: str = ""
     druknummer: int = 1
+    verschijningsdatum: str = ""
+    verschenen: bool = False
 
     # Basisgegevens
     verkoopprijs_incl_btw: float = 20.0

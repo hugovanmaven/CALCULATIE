@@ -52,7 +52,7 @@ export function CalculatieForm({
         <DrukkostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
-      <Section title="Kostenposten" subtitle="drag &amp; drop" defaultOpen>
+      <Section title="Kostenposten" defaultOpen>
         <KostenpostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 

@@ -52,6 +52,8 @@ class TitelInput:
     titel: str
     isbn: str = ""                       # ISBN-13
     druknummer: int = 1                  # 1 = 1e druk, 2 = herdruk, etc.
+    verschijningsdatum: str = ""         # ISO date, bijv. "2026-03-15"
+    verschenen: bool = False             # toggle: is het boek al verschenen?
 
     # ── Basisgegevens ──
     verkoopprijs_incl_btw: float = 0.0  # bijv. 17.50

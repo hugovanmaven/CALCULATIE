@@ -8,7 +8,7 @@ interface Props {
 
 export function DrukkostenSection({ titelInput, updateField }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <NumberInput
         label="Drukkosten /ex (1e druk)"
         value={titelInput.drukkosten_1e_druk}

@@ -24,7 +24,7 @@ export function ProductiekostenSection({ titelInput, updateField }: Props) {
   return (
     <div className="space-y-2">
       <p className="text-xs text-gray-400">Eenmalige kosten — vervallen bij herdruk</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {fields.map(f => (
           <NumberInput
             key={f.key}

@@ -15,6 +15,8 @@ export interface TitelInput {
   titel: string;
   isbn: string;
   druknummer: number;
+  verschijningsdatum: string;
+  verschenen: boolean;
   verkoopprijs_incl_btw: number;
   btw_percentage: number;
   boekhandelskorting: number;
@@ -203,6 +205,8 @@ export const DEFAULT_TITEL_INPUT: TitelInput = {
   titel: '',
   isbn: '',
   druknummer: 1,
+  verschijningsdatum: '',
+  verschenen: false,
   verkoopprijs_incl_btw: 20.0,
   btw_percentage: 0.09,
   boekhandelskorting: 0.48,

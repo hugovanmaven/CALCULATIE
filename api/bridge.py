@@ -26,6 +26,8 @@ def schema_to_dataclass(s: TitelInputSchema) -> TitelInput:
         titel=s.titel,
         isbn=s.isbn,
         druknummer=s.druknummer,
+        verschijningsdatum=s.verschijningsdatum,
+        verschenen=s.verschenen,
         verkoopprijs_incl_btw=s.verkoopprijs_incl_btw,
         btw_percentage=s.btw_percentage,
         boekhandelskorting=s.boekhandelskorting,

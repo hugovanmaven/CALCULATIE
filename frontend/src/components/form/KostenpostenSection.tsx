@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import type { TitelInput, KostenPost } from '../../api/types';
 
 interface Props {
@@ -12,59 +12,61 @@ function generateId(): string {
   return 'custom_' + Math.random().toString(36).slice(2, 9);
 }
 
-const CATEGORIE_LABELS: Record<string, string> = {
-  productie: 'Productie',
-  offline_marketing: 'Offline marketing',
-  online_marketing: 'Online marketing',
-};
-
-const CATEGORIE_COLORS: Record<string, string> = {
-  productie: 'bg-blue-50 border-blue-200 text-blue-700',
-  offline_marketing: 'bg-amber-50 border-amber-200 text-amber-700',
-  online_marketing: 'bg-green-50 border-green-200 text-green-700',
-};
+const CATEGORIE_CONFIG: {
+  key: KostenPost['categorie'];
+  label: string;
+  color: string;
+  borderColor: string;
+}[] = [
+  {
+    key: 'productie',
+    label: 'Productie',
+    color: 'bg-blue-50 border-blue-200',
+    borderColor: 'border-blue-300',
+  },
+  {
+    key: 'offline_marketing',
+    label: 'Offline marketing',
+    color: 'bg-amber-50 border-amber-200',
+    borderColor: 'border-amber-300',
+  },
+  {
+    key: 'online_marketing',
+    label: 'Online marketing',
+    color: 'bg-green-50 border-green-200',
+    borderColor: 'border-green-300',
+  },
+];
 
 /* ───── sub-components ───── */
 
-function KostenPostCard({
+function KostenPostRij({
   kp,
   onBedragChange,
+  onTypeChange,
   onRemove,
   isCustom,
-  dragHandlers,
 }: {
   kp: KostenPost;
   onBedragChange: (bedrag: number) => void;
+  onTypeChange: (type: 'eenmalig' | 'terugkerend') => void;
   onRemove?: () => void;
   isCustom: boolean;
-  dragHandlers: {
-    onDragStart: (e: React.DragEvent) => void;
-    onDragEnd: (e: React.DragEvent) => void;
-  };
 }) {
   return (
-    <div
-      draggable
-      onDragStart={dragHandlers.onDragStart}
-      onDragEnd={dragHandlers.onDragEnd}
-      className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 cursor-grab active:cursor-grabbing hover:shadow-sm transition-shadow group"
-    >
-      {/* drag handle */}
-      <span className="text-gray-300 group-hover:text-gray-500 shrink-0 select-none" title="Sleep naar andere kolom">
-        ⠿
-      </span>
+    <div className="flex items-center gap-2 py-1.5 group">
+      {/* naam — full width, no truncation */}
+      <span className="text-sm text-gray-700 flex-1 min-w-0">{kp.naam}</span>
 
-      {/* categorie badge */}
-      <span
-        className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border shrink-0 ${
-          CATEGORIE_COLORS[kp.categorie] ?? 'bg-gray-50 border-gray-200 text-gray-600'
-        }`}
+      {/* type dropdown */}
+      <select
+        value={kp.type}
+        onChange={e => onTypeChange(e.target.value as 'eenmalig' | 'terugkerend')}
+        className="text-xs border border-gray-300 rounded px-1.5 py-1 bg-white text-gray-600 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none shrink-0"
       >
-        {kp.categorie === 'productie' ? 'P' : kp.categorie === 'offline_marketing' ? 'OF' : 'ON'}
-      </span>
-
-      {/* naam */}
-      <span className="text-sm text-gray-700 truncate flex-1 min-w-0">{kp.naam}</span>
+        <option value="eenmalig">Eenmalig</option>
+        <option value="terugkerend">Terugkerend</option>
+      </select>
 
       {/* bedrag input */}
       <div className="flex items-center shrink-0">
@@ -83,87 +85,59 @@ function KostenPostCard({
       </div>
 
       {/* remove button (custom only) */}
-      {isCustom && onRemove && (
+      {isCustom && onRemove ? (
         <button
           onClick={onRemove}
-          className="text-gray-300 hover:text-red-500 transition-colors shrink-0"
+          className="text-gray-300 hover:text-red-500 transition-colors shrink-0 w-5 text-center"
           title="Verwijderen"
         >
           &times;
         </button>
+      ) : (
+        <span className="w-5 shrink-0" />
       )}
     </div>
   );
 }
 
-function DropColumn({
-  title,
-  subtitle,
-  type,
+function CategorieGroep({
+  label,
+  color,
   items,
   onBedragChange,
+  onTypeChange,
   onRemove,
-  onDragStart,
-  onDragEnd,
-  onDrop,
-  isDragOver,
-  onDragOver,
-  onDragLeave,
 }: {
-  title: string;
-  subtitle: string;
-  type: 'eenmalig' | 'terugkerend';
+  label: string;
+  color: string;
   items: KostenPost[];
   onBedragChange: (id: string, bedrag: number) => void;
+  onTypeChange: (id: string, type: 'eenmalig' | 'terugkerend') => void;
   onRemove: (id: string) => void;
-  onDragStart: (e: React.DragEvent, id: string) => void;
-  onDragEnd: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent, targetType: 'eenmalig' | 'terugkerend') => void;
-  isDragOver: boolean;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: (e: React.DragEvent) => void;
 }) {
   const subtotal = items.reduce((sum, kp) => sum + kp.bedrag, 0);
 
-  return (
-    <div
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={e => onDrop(e, type)}
-      className={`rounded-lg border-2 border-dashed p-3 transition-colors min-h-[120px] ${
-        isDragOver
-          ? 'border-blue-400 bg-blue-50/50'
-          : 'border-gray-200 bg-gray-50/30'
-      }`}
-    >
-      <div className="flex items-baseline justify-between mb-2">
-        <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide">{title}</h4>
-        <span className="text-[10px] text-gray-400">{subtitle}</span>
-      </div>
+  if (items.length === 0) return null;
 
-      <div className="space-y-1.5">
-        {items.length === 0 && (
-          <p className="text-xs text-gray-400 italic py-4 text-center">
-            Sleep kostenposten hierheen
-          </p>
-        )}
+  return (
+    <div className={`rounded-lg border p-3 ${color}`}>
+      <h4 className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-1">{label}</h4>
+
+      <div className="divide-y divide-gray-200/50">
         {items.map(kp => (
-          <KostenPostCard
+          <KostenPostRij
             key={kp.id}
             kp={kp}
             onBedragChange={bedrag => onBedragChange(kp.id, bedrag)}
+            onTypeChange={type => onTypeChange(kp.id, type)}
             onRemove={kp.id.startsWith('custom_') ? () => onRemove(kp.id) : undefined}
             isCustom={kp.id.startsWith('custom_')}
-            dragHandlers={{
-              onDragStart: e => onDragStart(e, kp.id),
-              onDragEnd,
-            }}
           />
         ))}
       </div>
 
       {/* subtotaal */}
-      <div className="flex justify-between items-center border-t border-gray-200 pt-2 mt-3">
+      <div className="flex justify-between items-center border-t border-gray-300/40 pt-2 mt-2">
         <span className="text-xs font-semibold text-gray-500 uppercase">Subtotaal</span>
         <span className="text-sm font-semibold text-gray-800 font-mono">
           &euro; {subtotal.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
@@ -176,15 +150,11 @@ function DropColumn({
 /* ───── main component ───── */
 
 export function KostenpostenSection({ titelInput, updateField }: Props) {
-  const [dragOverCol, setDragOverCol] = useState<'eenmalig' | 'terugkerend' | null>(null);
-  const dragItemId = useRef<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newNaam, setNewNaam] = useState('');
   const [newCategorie, setNewCategorie] = useState<KostenPost['categorie']>('productie');
 
   const kostenposten = titelInput.kostenposten;
-  const eenmalig = kostenposten.filter(kp => kp.type === 'eenmalig');
-  const terugkerend = kostenposten.filter(kp => kp.type === 'terugkerend');
 
   /* --- update helpers --- */
   const updateKostenposten = (newList: KostenPost[]) => {
@@ -197,50 +167,14 @@ export function KostenpostenSection({ titelInput, updateField }: Props) {
     );
   };
 
+  const handleTypeChange = (id: string, type: 'eenmalig' | 'terugkerend') => {
+    updateKostenposten(
+      kostenposten.map(kp => (kp.id === id ? { ...kp, type } : kp))
+    );
+  };
+
   const handleRemove = (id: string) => {
     updateKostenposten(kostenposten.filter(kp => kp.id !== id));
-  };
-
-  /* --- drag & drop --- */
-  const handleDragStart = (e: React.DragEvent, id: string) => {
-    dragItemId.current = id;
-    e.dataTransfer.effectAllowed = 'move';
-    // Make the drag image slightly transparent
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '0.5';
-    }
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    dragItemId.current = null;
-    setDragOverCol(null);
-    if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '1';
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent, col: 'eenmalig' | 'terugkerend') => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverCol(col);
-  };
-
-  const handleDragLeave = (_e: React.DragEvent) => {
-    setDragOverCol(null);
-  };
-
-  const handleDrop = (_e: React.DragEvent, targetType: 'eenmalig' | 'terugkerend') => {
-    _e.preventDefault();
-    setDragOverCol(null);
-    const id = dragItemId.current;
-    if (!id) return;
-
-    updateKostenposten(
-      kostenposten.map(kp =>
-        kp.id === id ? { ...kp, type: targetType } : kp
-      )
-    );
-    dragItemId.current = null;
   };
 
   /* --- add custom --- */
@@ -259,62 +193,33 @@ export function KostenpostenSection({ titelInput, updateField }: Props) {
   };
 
   /* --- totals --- */
-  const totaalEenmalig = eenmalig.reduce((s, kp) => s + kp.bedrag, 0);
-  const totaalTerugkerend = terugkerend.reduce((s, kp) => s + kp.bedrag, 0);
+  const totaalEenmalig = kostenposten
+    .filter(kp => kp.type === 'eenmalig')
+    .reduce((s, kp) => s + kp.bedrag, 0);
+  const totaalTerugkerend = kostenposten
+    .filter(kp => kp.type === 'terugkerend')
+    .reduce((s, kp) => s + kp.bedrag, 0);
   const totaalAlles = totaalEenmalig + totaalTerugkerend;
 
   return (
     <div className="space-y-3">
       {/* uitleg */}
       <p className="text-xs text-gray-400">
-        Sleep kostenposten tussen de kolommen om aan te geven of ze <strong>eenmalig</strong> (alleen 1e druk) of <strong>terugkerend</strong> (elke druk) zijn.
+        Selecteer per kostenpost of deze <strong>eenmalig</strong> (alleen 1e druk) of <strong>terugkerend</strong> (elke druk) is.
       </p>
 
-      {/* legend */}
-      <div className="flex gap-3 flex-wrap">
-        {Object.entries(CATEGORIE_LABELS).map(([key, label]) => (
-          <span
-            key={key}
-            className={`text-[10px] font-semibold uppercase px-2 py-0.5 rounded border ${
-              CATEGORIE_COLORS[key]
-            }`}
-          >
-            {label}
-          </span>
-        ))}
-      </div>
-
-      {/* two-column drag & drop */}
-      <div className="grid grid-cols-2 gap-3">
-        <DropColumn
-          title="Eenmalig"
-          subtitle="alleen 1e druk"
-          type="eenmalig"
-          items={eenmalig}
+      {/* 3 categorie-groepen gestapeld */}
+      {CATEGORIE_CONFIG.map(cat => (
+        <CategorieGroep
+          key={cat.key}
+          label={cat.label}
+          color={cat.color}
+          items={kostenposten.filter(kp => kp.categorie === cat.key)}
           onBedragChange={handleBedragChange}
+          onTypeChange={handleTypeChange}
           onRemove={handleRemove}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDrop={handleDrop}
-          isDragOver={dragOverCol === 'eenmalig'}
-          onDragOver={e => handleDragOver(e, 'eenmalig')}
-          onDragLeave={handleDragLeave}
         />
-        <DropColumn
-          title="Terugkerend"
-          subtitle="elke druk"
-          type="terugkerend"
-          items={terugkerend}
-          onBedragChange={handleBedragChange}
-          onRemove={handleRemove}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDrop={handleDrop}
-          isDragOver={dragOverCol === 'terugkerend'}
-          onDragOver={e => handleDragOver(e, 'terugkerend')}
-          onDragLeave={handleDragLeave}
-        />
-      </div>
+      ))}
 
       {/* add custom kostenpost */}
       {!showAddForm ? (
@@ -325,7 +230,7 @@ export function KostenpostenSection({ titelInput, updateField }: Props) {
           <span className="text-base leading-none">+</span> Kostenpost toevoegen
         </button>
       ) : (
-        <div className="flex items-end gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
           <div className="flex-1">
             <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
               Naam
@@ -347,26 +252,28 @@ export function KostenpostenSection({ titelInput, updateField }: Props) {
             <select
               value={newCategorie}
               onChange={e => setNewCategorie(e.target.value as KostenPost['categorie'])}
-              className="px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
             >
               <option value="productie">Productie</option>
               <option value="offline_marketing">Offline marketing</option>
               <option value="online_marketing">Online marketing</option>
             </select>
           </div>
-          <button
-            onClick={handleAddCustom}
-            disabled={!newNaam.trim()}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            Toevoegen
-          </button>
-          <button
-            onClick={() => { setShowAddForm(false); setNewNaam(''); }}
-            className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            Annuleren
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleAddCustom}
+              disabled={!newNaam.trim()}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Toevoegen
+            </button>
+            <button
+              onClick={() => { setShowAddForm(false); setNewNaam(''); }}
+              className="px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+            >
+              Annuleren
+            </button>
+          </div>
         </div>
       )}
 

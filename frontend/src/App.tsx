@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AppShell } from './components/layout/AppShell';
+import { Sidebar } from './components/layout/Sidebar';
 import { TitelTabs } from './components/layout/TitelTabs';
 import { CalculatieForm } from './components/form/CalculatieForm';
 import { ResultsDashboard } from './components/results/ResultsDashboard';
@@ -22,6 +23,7 @@ export default function App() {
   } = useTitels();
 
   const [activePanel, setActivePanel] = useState<ActivePanel>('resultaten');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (!loaded) {
     return (
@@ -34,98 +36,118 @@ export default function App() {
   }
 
   return (
-    <AppShell>
-      {/* Titel tabs */}
-      <TitelTabs
-        titels={titels}
-        activeIndex={activeIndex}
-        onSwitch={switchTitel}
-        onAdd={addTitel}
-        onRemove={removeTitel}
-        onDuplicate={duplicateTitel}
-      />
+    <AppShell onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}>
+      <div className="flex">
+        {/* Sidebar */}
+        <Sidebar
+          titels={titels}
+          activeIndex={activeIndex}
+          onSwitch={switchTitel}
+          onAdd={addTitel}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+        />
 
-      <div className="flex flex-col lg:flex-row gap-0">
-        {/* Left: Input Form */}
-        <div className="w-full lg:w-[440px] lg:min-w-[440px] border-r border-gray-200 bg-white overflow-y-auto lg:h-[calc(100vh-92px)] lg:sticky lg:top-[92px]">
-          <div className="p-4">
-            <CalculatieForm
-              titelInput={titelInput}
-              updateField={updateField}
-              herdrukOplages={herdrukOplages}
-              setHerdrukOplages={setHerdrukOplages}
-              verdeling={verdeling}
-              setVerdeling={setVerdeling}
-            />
+        {/* Main content */}
+        <div className="flex-1 min-w-0">
+          {/* Titel tabs (quick switcher) */}
+          <TitelTabs
+            titels={titels}
+            activeIndex={activeIndex}
+            onSwitch={switchTitel}
+            onAdd={addTitel}
+            onRemove={removeTitel}
+            onDuplicate={duplicateTitel}
+          />
+
+          <div className="flex flex-col lg:flex-row gap-0">
+            {/* Left: Input Form */}
+            <div className="w-full lg:w-[440px] lg:min-w-[440px] border-r border-gray-200 bg-white overflow-y-auto lg:h-[calc(100vh-92px)] lg:sticky lg:top-[92px]">
+              <div className="p-3 sm:p-4">
+                <CalculatieForm
+                  titelInput={titelInput}
+                  updateField={updateField}
+                  herdrukOplages={herdrukOplages}
+                  setHerdrukOplages={setHerdrukOplages}
+                  verdeling={verdeling}
+                  setVerdeling={setVerdeling}
+                />
+              </div>
+            </div>
+
+            {/* Right: Results */}
+            <div className="flex-1 overflow-y-auto lg:h-[calc(100vh-92px)] p-3 sm:p-4 lg:p-6">
+              {/* Top bar with panel toggle + export */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+                  <button
+                    onClick={() => setActivePanel('resultaten')}
+                    className={`px-3 sm:px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      activePanel === 'resultaten'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Resultaten
+                  </button>
+                  <button
+                    onClick={() => setActivePanel('margeverbeteringen')}
+                    className={`px-3 sm:px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      activePanel === 'margeverbeteringen'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Margeverbeteringen
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  {loading && (
+                    <Loader2 size={18} className="animate-spin text-blue-500" />
+                  )}
+                  <ExportButtons
+                    titelInput={titelInput}
+                    herdrukOplages={herdrukOplages}
+                    verdeling={verdeling}
+                  />
+                </div>
+              </div>
+
+              {/* Title indicator */}
+              {titelInput.titel && (
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-4">
+                  {titelInput.titel}
+                  {titelInput.isbn && (
+                    <span className="ml-2 text-sm font-normal text-gray-400 font-mono">
+                      {titelInput.isbn}
+                    </span>
+                  )}
+                  {titelInput.druknummer > 1 && (
+                    <span className="ml-2 text-sm font-normal text-gray-400">
+                      ({titelInput.druknummer}e druk)
+                    </span>
+                  )}
+                  {titelInput.verschenen && (
+                    <span className="ml-2 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 align-middle">
+                      Verschenen
+                    </span>
+                  )}
+                </h2>
+              )}
+
+              {/* Panel content */}
+              {!results ? (
+                <div className="text-center text-gray-400 py-16">
+                  <p className="text-base">Vul gegevens in aan de linkerkant</p>
+                  <p className="text-sm mt-1">Resultaten verschijnen automatisch</p>
+                </div>
+              ) : activePanel === 'resultaten' ? (
+                <ResultsDashboard results={results} titelInput={titelInput} verdeling={verdeling} />
+              ) : activePanel === 'margeverbeteringen' ? (
+                <SensitivityPanel cacSens={cacSens} priceSens={priceSens} />
+              ) : null}
+            </div>
           </div>
-        </div>
-
-        {/* Right: Results */}
-        <div className="flex-1 overflow-y-auto lg:h-[calc(100vh-92px)] p-4 lg:p-6">
-          {/* Top bar with panel toggle + export */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-              <button
-                onClick={() => setActivePanel('resultaten')}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activePanel === 'resultaten'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Resultaten
-              </button>
-              <button
-                onClick={() => setActivePanel('margeverbeteringen')}
-                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  activePanel === 'margeverbeteringen'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Margeverbeteringen
-              </button>
-            </div>
-            <div className="flex items-center gap-3">
-              {loading && (
-                <Loader2 size={18} className="animate-spin text-blue-500" />
-              )}
-              <ExportButtons
-                titelInput={titelInput}
-                herdrukOplages={herdrukOplages}
-                verdeling={verdeling}
-              />
-            </div>
-          </div>
-
-          {/* Title indicator */}
-          {titelInput.titel && (
-            <h2 className="text-lg font-bold text-gray-900 mb-4">
-              {titelInput.titel}
-              {titelInput.isbn && (
-                <span className="ml-2 text-sm font-normal text-gray-400 font-mono">
-                  {titelInput.isbn}
-                </span>
-              )}
-              {titelInput.druknummer > 1 && (
-                <span className="ml-2 text-sm font-normal text-gray-400">
-                  ({titelInput.druknummer}e druk)
-                </span>
-              )}
-            </h2>
-          )}
-
-          {/* Panel content */}
-          {!results ? (
-            <div className="text-center text-gray-400 py-16">
-              <p className="text-base">Vul gegevens in aan de linkerkant</p>
-              <p className="text-sm mt-1">Resultaten verschijnen automatisch</p>
-            </div>
-          ) : activePanel === 'resultaten' ? (
-            <ResultsDashboard results={results} titelInput={titelInput} />
-          ) : activePanel === 'margeverbeteringen' ? (
-            <SensitivityPanel cacSens={cacSens} priceSens={priceSens} />
-          ) : null}
         </div>
       </div>
     </AppShell>
