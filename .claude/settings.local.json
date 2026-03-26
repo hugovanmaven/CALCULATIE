@@ -17,7 +17,22 @@
       "Bash(xargs kill:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:docs.google.com)",
+      "WebFetch(domain:doc-08-bg-sheets.googleusercontent.com)",
+      "Bash(python:*)",
+      "Bash(npm run dev:*)",
+      "Bash(open:*)",
+      "Bash(ls:*)",
+      "Bash(gh repo view:*)",
+      "Bash(brew install:*)",
+      "Bash(gh auth status:*)",
+      "Bash(gh repo list:*)",
+      "Bash(gh api:*)",
+      "Bash(mkdir -p /Users/hugovandoornum/Desktop/CLAUDE/Calculatie/.claude/skills/marge-berekening)",
+      "Bash(mv /Users/hugovandoornum/Desktop/CLAUDE/Calculatie/.claude/skills/marge-berekening.md /Users/hugovandoornum/Desktop/CLAUDE/Calculatie/.claude/skills/marge-berekening/SKILL.md)",
+      "Bash(zip -r /Users/hugovandoornum/Desktop/CLAUDE/Calculatie/marge-berekening-skill.zip marge-berekening/)",
+      "Bash(git remote:*)"
     ]
   }
 }
