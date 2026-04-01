@@ -1,155 +1,72 @@
-import { useState } from 'react';
-import { AppShell } from './components/layout/AppShell';
-import { Sidebar } from './components/layout/Sidebar';
-import { TitelTabs } from './components/layout/TitelTabs';
-import { CalculatieForm } from './components/form/CalculatieForm';
-import { ResultsDashboard } from './components/results/ResultsDashboard';
-import { SensitivityPanel } from './components/sensitivity/SensitivityPanel';
-import { ExportButtons } from './components/export/ExportButtons';
-import { useTitels } from './hooks/useTitels';
-import { Loader2 } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import DatabaseView from './components/views/DatabaseView';
+import DetailView from './components/views/DetailView';
+import { useTitelList } from './hooks/useTitelList';
+import { saveTitel, deleteTitel, importCsv } from './api/client';
+import { DEFAULT_TITEL_INPUT, DEFAULT_KOSTENPOSTEN } from './api/types';
 
-type ActivePanel = 'resultaten' | 'margeverbeteringen';
+type View = { kind: 'database' } | { kind: 'detail'; titelId: string };
 
 export default function App() {
-  const {
-    titels, activeIndex,
-    addTitel, switchTitel, removeTitel, duplicateTitel,
-    titelInput, updateField,
-    herdrukOplages, setHerdrukOplages,
-    verdeling, setVerdeling,
-    results, cacSens, priceSens,
-    loading, loaded,
-  } = useTitels();
+  const [view, setView] = useState<View>({ kind: 'database' });
+  const list = useTitelList();
 
-  const [activePanel, setActivePanel] = useState<ActivePanel>('resultaten');
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const handleOpenTitel = useCallback((id: string) => {
+    setView({ kind: 'detail', titelId: id });
+  }, []);
 
-  if (!loaded) {
+  const handleNewTitel = useCallback(async () => {
+    const saved = await saveTitel({
+      titel_input: { ...DEFAULT_TITEL_INPUT, kostenposten: [...DEFAULT_KOSTENPOSTEN] },
+      herdruk_oplages: [],
+      verdeling_webshop: 0.10,
+      verdeling_retail: 0.90,
+      verdeling_b2b: 0.00,
+    });
+    setView({ kind: 'detail', titelId: saved.id });
+  }, []);
+
+  const handleBack = useCallback(() => {
+    setView({ kind: 'database' });
+    list.refresh();
+  }, [list]);
+
+  const handleDelete = useCallback(async (ids: string[]) => {
+    await Promise.all(ids.map(id => deleteTitel(id)));
+    list.refresh();
+  }, [list]);
+
+  const handleImportCsv = useCallback(async (file: File) => {
+    try {
+      await importCsv(file);
+      list.refresh();
+    } catch (e) {
+      console.error('CSV import failed:', e);
+      alert('Import mislukt. Controleer het CSV-formaat.');
+    }
+  }, [list]);
+
+  if (view.kind === 'detail') {
     return (
-      <AppShell>
-        <div className="flex items-center justify-center h-[calc(100vh-52px)]">
-          <Loader2 size={32} className="animate-spin text-blue-500" />
-        </div>
-      </AppShell>
+      <DetailView
+        titelId={view.titelId}
+        onBack={handleBack}
+      />
     );
   }
 
   return (
-    <AppShell onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}>
-      <div className="flex">
-        {/* Sidebar */}
-        <Sidebar
-          titels={titels}
-          activeIndex={activeIndex}
-          onSwitch={switchTitel}
-          onAdd={addTitel}
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
-
-        {/* Main content */}
-        <div className="flex-1 min-w-0">
-          {/* Titel tabs (quick switcher) */}
-          <TitelTabs
-            titels={titels}
-            activeIndex={activeIndex}
-            onSwitch={switchTitel}
-            onAdd={addTitel}
-            onRemove={removeTitel}
-            onDuplicate={duplicateTitel}
-          />
-
-          <div className="flex flex-col lg:flex-row gap-0">
-            {/* Left: Input Form */}
-            <div className="w-full lg:w-[440px] lg:min-w-[440px] border-r border-gray-200 bg-white overflow-y-auto lg:h-[calc(100vh-92px)] lg:sticky lg:top-[92px]">
-              <div className="p-3 sm:p-4">
-                <CalculatieForm
-                  titelInput={titelInput}
-                  updateField={updateField}
-                  herdrukOplages={herdrukOplages}
-                  setHerdrukOplages={setHerdrukOplages}
-                  verdeling={verdeling}
-                  setVerdeling={setVerdeling}
-                />
-              </div>
-            </div>
-
-            {/* Right: Results */}
-            <div className="flex-1 overflow-y-auto lg:h-[calc(100vh-92px)] p-3 sm:p-4 lg:p-6">
-              {/* Top bar with panel toggle + export */}
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-4">
-                <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-                  <button
-                    onClick={() => setActivePanel('resultaten')}
-                    className={`px-3 sm:px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      activePanel === 'resultaten'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Resultaten
-                  </button>
-                  <button
-                    onClick={() => setActivePanel('margeverbeteringen')}
-                    className={`px-3 sm:px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      activePanel === 'margeverbeteringen'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    Margeverbeteringen
-                  </button>
-                </div>
-                <div className="flex items-center gap-3">
-                  {loading && (
-                    <Loader2 size={18} className="animate-spin text-blue-500" />
-                  )}
-                  <ExportButtons
-                    titelInput={titelInput}
-                    herdrukOplages={herdrukOplages}
-                    verdeling={verdeling}
-                  />
-                </div>
-              </div>
-
-              {/* Title indicator */}
-              {titelInput.titel && (
-                <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-4">
-                  {titelInput.titel}
-                  {titelInput.isbn && (
-                    <span className="ml-2 text-sm font-normal text-gray-400 font-mono">
-                      {titelInput.isbn}
-                    </span>
-                  )}
-                  {titelInput.druknummer > 1 && (
-                    <span className="ml-2 text-sm font-normal text-gray-400">
-                      ({titelInput.druknummer}e druk)
-                    </span>
-                  )}
-                  {titelInput.verschenen && (
-                    <span className="ml-2 text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 align-middle">
-                      Verschenen
-                    </span>
-                  )}
-                </h2>
-              )}
-
-              {/* Panel content */}
-              {!results ? (
-                <div className="text-center text-gray-400 py-16">
-                  <p className="text-base">Vul gegevens in aan de linkerkant</p>
-                  <p className="text-sm mt-1">Resultaten verschijnen automatisch</p>
-                </div>
-              ) : activePanel === 'resultaten' ? (
-                <ResultsDashboard results={results} titelInput={titelInput} verdeling={verdeling} />
-              ) : activePanel === 'margeverbeteringen' ? (
-                <SensitivityPanel cacSens={cacSens} priceSens={priceSens} />
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </div>
-    </AppShell>
+    <DatabaseView
+      items={list.items}
+      loading={list.loading}
+      showArchived={list.showArchived}
+      onToggleArchived={list.setShowArchived}
+      onOpenTitel={handleOpenTitel}
+      onNewTitel={handleNewTitel}
+      onArchive={list.archive}
+      onUnarchive={list.unarchive}
+      onDelete={handleDelete}
+      onImportCsv={handleImportCsv}
+    />
   );
 }

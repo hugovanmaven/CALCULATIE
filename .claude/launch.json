@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flask-calculatie",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["run.py"],
+      "port": 5001,
+      "cwd": "deploy"
+    }
+  ]
+}

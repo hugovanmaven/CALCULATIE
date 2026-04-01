@@ -36,7 +36,7 @@ export function AuteurDealSection({ titelInput, updateField }: Props) {
             name="auteur_mode"
             checked={mode === 'winstdeling'}
             onChange={() => setMode('winstdeling')}
-            className="text-blue-600"
+            className="text-[var(--accent)]"
           />
           <span className="text-sm">Winstdeling</span>
         </label>
@@ -46,7 +46,7 @@ export function AuteurDealSection({ titelInput, updateField }: Props) {
             name="auteur_mode"
             checked={mode === 'royalty'}
             onChange={() => setMode('royalty')}
-            className="text-blue-600"
+            className="text-[var(--accent)]"
           />
           <span className="text-sm">Royalty-staffel</span>
         </label>
@@ -62,11 +62,21 @@ export function AuteurDealSection({ titelInput, updateField }: Props) {
           help="% van brutowinst — bijv. 45 = auteur krijgt 45%, Maven 55%"
         />
       ) : (
-        <StaffelEditor
-          staffel={titelInput.auteur_royalty_staffel}
-          onChange={s => updateField('auteur_royalty_staffel', s)}
-          label="Auteur royalty-staffel (% van prijs ex BTW)"
-        />
+        <>
+          <StaffelEditor
+            staffel={titelInput.auteur_royalty_staffel}
+            onChange={s => updateField('auteur_royalty_staffel', s)}
+            label="Auteur royalty-staffel (% van prijs ex BTW)"
+          />
+          <NumberInput
+            label="Voorschot"
+            value={titelInput.auteur_voorschot ?? 0}
+            onChange={v => updateField('auteur_voorschot', v)}
+            prefix="&euro;"
+            step={500}
+            help="Wordt ingelopen via royalty per verkocht exemplaar"
+          />
+        </>
       )}
     </div>
   );

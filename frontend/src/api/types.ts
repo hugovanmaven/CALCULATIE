@@ -11,15 +11,43 @@ export interface KostenPost {
   bedrag: number;
 }
 
+export interface ExtraDerde {
+  id: string;
+  naam: string;
+  type: 'royalty' | 'winstdeling';
+  percentage: number;
+  staffel: StaffelTrede[];
+  voorschot: number;
+}
+
+export interface OverigeKostenItem {
+  id: string;
+  naam: string;
+  type: 'bedrag' | 'percentage';
+  waarde: number;
+}
+
+// ── v4: Multi-druk per titel ──
+
+export interface DrukConfig {
+  druknummer: number;
+  oplage: number;
+  drukkosten_per_ex: number;
+}
+
 export interface TitelInput {
   titel: string;
+  auteur: string;
   isbn: string;
-  druknummer: number;
   verschijningsdatum: string;
   verschenen: boolean;
   verkoopprijs_incl_btw: number;
   btw_percentage: number;
   boekhandelskorting: number;
+  // Multi-druk (v4) — replaces druknummer + oplage_1e_druk + drukkosten
+  drukken: DrukConfig[];
+  // Legacy fields (kept for backward compat with engine bridge)
+  druknummer: number;
   oplage_1e_druk: number;
   drukkosten_1e_druk: number;
   drukkosten_herdruk: number;
@@ -57,18 +85,25 @@ export interface TitelInput {
   // Auteur
   auteur_winstdeling_pct: number;
   auteur_royalty_staffel: StaffelTrede[];
+  auteur_voorschot: number;
   // Derden
   agent_staffel: StaffelTrede[];
   agent_pct: number;
+  agent_voorschot: number;
   vertaler_pct: number;
   vertaler_staffel: StaffelTrede[];
+  vertaler_voorschot: number;
   illustrator_pct: number;
   illustrator_staffel: StaffelTrede[];
+  illustrator_voorschot: number;
   // Partnership
   heeft_partner: boolean;
   partner_naam: string;
   // Overige
   overige_kosten_pct: number;
+  overige_kosten_items: OverigeKostenItem[];
+  // Extra derden (v3)
+  extra_derden: ExtraDerde[];
   // Flexibele kostenposten (v2)
   kostenposten: KostenPost[];
   gebruik_kostenposten: boolean;
@@ -147,6 +182,23 @@ export interface SensitivityResponse {
   rows: SensitivityRow[];
 }
 
+// ── v4: Oplage simulatie ──
+
+export interface OplageSimRow {
+  oplage: number;
+  omzet: number;
+  kosten: number;
+  netto_resultaat: number;
+  marge_pct: number;
+  is_break_even: boolean;
+  voorschot_ingelopen: boolean;
+}
+
+export interface OplageSimResponse {
+  rows: OplageSimRow[];
+  break_even_oplage: number | null;
+}
+
 export interface ValidateCheck {
   label: string;
   berekend: number;
@@ -171,13 +223,17 @@ export interface StoredTitel {
   verdeling_webshop: number;
   verdeling_retail: number;
   verdeling_b2b: number;
+  archived?: boolean;
 }
 
 export interface TitelListItem {
   id: string;
   titel: string;
+  auteur: string;
   isbn: string;
-  druknummer: number;
+  drukken_count: number;
+  gewogen_marge_pct: number | null;
+  archived: boolean;
 }
 
 export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [
@@ -201,15 +257,25 @@ export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [
   { id: 'software_kosten', naam: 'Software kosten', categorie: 'online_marketing', type: 'terugkerend', bedrag: 0 },
 ];
 
+export const DEFAULT_DRUK: DrukConfig = {
+  druknummer: 1,
+  oplage: 2000,
+  drukkosten_per_ex: 1.20,
+};
+
 export const DEFAULT_TITEL_INPUT: TitelInput = {
   titel: '',
+  auteur: '',
   isbn: '',
-  druknummer: 1,
   verschijningsdatum: '',
   verschenen: false,
   verkoopprijs_incl_btw: 20.0,
   btw_percentage: 0.09,
   boekhandelskorting: 0.48,
+  // Multi-druk
+  drukken: [{ ...DEFAULT_DRUK }],
+  // Legacy (kept for engine bridge compat)
+  druknummer: 1,
   oplage_1e_druk: 2000,
   drukkosten_1e_druk: 1.20,
   drukkosten_herdruk: 1.20,
@@ -247,18 +313,25 @@ export const DEFAULT_TITEL_INPUT: TitelInput = {
   // Auteur
   auteur_winstdeling_pct: 0.50,
   auteur_royalty_staffel: [],
+  auteur_voorschot: 0,
   // Derden
   agent_staffel: [],
   agent_pct: 0.0,
+  agent_voorschot: 0,
   vertaler_pct: 0.0,
   vertaler_staffel: [],
+  vertaler_voorschot: 0,
   illustrator_pct: 0.0,
   illustrator_staffel: [],
+  illustrator_voorschot: 0,
   // Partnership
   heeft_partner: false,
   partner_naam: '',
   // Overige
   overige_kosten_pct: 0.0,
+  overige_kosten_items: [],
+  // Extra derden (v3)
+  extra_derden: [],
   // Flexibele kostenposten (v2)
   kostenposten: [...DEFAULT_KOSTENPOSTEN],
   gebruik_kostenposten: true,

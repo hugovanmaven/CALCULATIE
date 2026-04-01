@@ -4,9 +4,13 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: '/static/calc/',
   server: {
     proxy: {
-      '/api': 'http://localhost:8000',
+      '/calculatie/api': {
+        target: 'http://localhost:8000',
+        rewrite: (path) => path.replace(/^\/calculatie/, ''),
+      },
     },
   },
 })

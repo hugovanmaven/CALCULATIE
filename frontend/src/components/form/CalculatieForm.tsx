@@ -10,14 +10,13 @@ import { AuteurDealSection } from './AuteurDealSection';
 import { DerdenSection } from './DerdenSection';
 import { PartnershipSection } from './PartnershipSection';
 import { OverigeKostenSection } from './OverigeKostenSection';
-import { HerdrukkenSection } from './HerdrukkenSection';
 import { VerdelingSection } from './VerdelingSection';
 
 interface Props {
   titelInput: TitelInput;
   updateField: <K extends keyof TitelInput>(field: K, value: TitelInput[K]) => void;
-  herdrukOplages: number[];
-  setHerdrukOplages: (v: number[]) => void;
+  herdrukOplages?: number[];
+  setHerdrukOplages?: (v: number[]) => void;
   verdeling: { webshop: number; retail: number; b2b: number };
   setVerdeling: (v: { webshop: number; retail: number; b2b: number }) => void;
 }
@@ -25,17 +24,16 @@ interface Props {
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 pt-3 pb-1 px-1">
-      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+      <span className="text-[10px] font-bold text-[var(--text-tertiary)] uppercase tracking-widest">
         {children}
       </span>
-      <div className="flex-1 h-px bg-gray-200" />
+      <div className="flex-1 h-px bg-[var(--border)]" />
     </div>
   );
 }
 
 export function CalculatieForm({
   titelInput, updateField,
-  herdrukOplages, setHerdrukOplages,
   verdeling, setVerdeling,
 }: Props) {
   return (
@@ -95,13 +93,6 @@ export function CalculatieForm({
 
       <Section title="Overige kosten">
         <OverigeKostenSection titelInput={titelInput} updateField={updateField} />
-      </Section>
-
-      <Section title="Herdrukken">
-        <HerdrukkenSection
-          herdrukOplages={herdrukOplages}
-          setHerdrukOplages={setHerdrukOplages}
-        />
       </Section>
     </div>
   );
