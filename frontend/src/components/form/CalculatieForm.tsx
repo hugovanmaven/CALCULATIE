@@ -1,7 +1,6 @@
 import type { TitelInput } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
-import { DrukkostenSection } from './DrukkostenSection';
 import { KostenpostenSection } from './KostenpostenSection';
 import { WebshopKostenSection } from './WebshopKostenSection';
 import { RetailKostenSection } from './RetailKostenSection';
@@ -45,10 +44,6 @@ export function CalculatieForm({
 
       {/* ─── PRODUCTIE & KOSTEN ─── */}
       <GroupLabel>Productie &amp; kosten</GroupLabel>
-
-      <Section title="Drukkosten">
-        <DrukkostenSection titelInput={titelInput} updateField={updateField} />
-      </Section>
 
       <Section title="Kostenposten" defaultOpen>
         <KostenpostenSection titelInput={titelInput} updateField={updateField} />

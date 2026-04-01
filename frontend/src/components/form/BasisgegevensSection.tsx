@@ -1,4 +1,5 @@
 import type { TitelInput, DrukConfig } from '../../api/types';
+import { DEFAULT_KOSTENPOSTEN } from '../../api/types';
 import { NumberInput } from './NumberInput';
 import { Plus, Trash2 } from 'lucide-react';
 
@@ -22,6 +23,7 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
       druknummer: nextNr,
       oplage: lastDruk?.oplage ?? 2000,
       drukkosten_per_ex: lastDruk?.drukkosten_per_ex ?? 1.20,
+      kostenposten: [...DEFAULT_KOSTENPOSTEN],
     }]);
   };
 
@@ -175,20 +177,6 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
                   placeholder="Oplage"
                 />
                 <span className="text-xs text-[var(--text-tertiary)] shrink-0">ex</span>
-              </div>
-
-              {/* Drukkosten/ex */}
-              <div className="flex items-center gap-1 shrink-0">
-                <span className="text-xs text-[var(--text-tertiary)]">&euro;</span>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.1}
-                  value={druk.drukkosten_per_ex}
-                  onChange={e => updateDruk(idx, 'drukkosten_per_ex', parseFloat(e.target.value) || 0)}
-                  className="w-16 px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--bg-secondary)] tabular-nums outline-none focus:ring-1 focus:ring-[var(--accent)]/30"
-                />
-                <span className="text-xs text-[var(--text-tertiary)]">/ex</span>
               </div>
 
               {/* Remove */}

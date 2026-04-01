@@ -42,9 +42,11 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
   const druk = results.drukken[0];
   if (!druk) return null;
 
+  const totaalExemplaren = results.drukken.reduce((sum, d) => sum + d.oplage, 0);
+
   return (
     <div className="space-y-4">
-      <HeadlineMarge marge={druk.gewogen_marge_pct} />
+      <HeadlineStats marge={druk.gewogen_marge_pct} totaalExemplaren={totaalExemplaren} />
       <KanaalCards druk={druk} verdeling={verdeling} />
 
       {/* Oplage simulatie */}
@@ -67,28 +69,39 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
 // Sub-components
 // ──────────────────────────────────────────────────
 
-function HeadlineMarge({ marge }: { marge: number }) {
+function HeadlineStats({ marge, totaalExemplaren }: { marge: number; totaalExemplaren: number }) {
   const margeVal = marge * 100;
   const barWidth = Math.min(Math.max(margeVal, 0), 70);
   const targetLeft = (STREEFMARGE * 100 / 70) * 100;
 
   return (
-    <div className={`p-4 rounded-xl border ${margeColor(marge)}`}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-medium">Gewogen marge</span>
-        <span className="text-2xl font-bold tabular-nums">{pct(marge)}</span>
+    <div className="grid grid-cols-3 gap-3">
+      {/* Gewogen marge — 2/3 width */}
+      <div className={`col-span-2 p-4 rounded-xl border ${margeColor(marge)}`}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-medium">Gewogen marge</span>
+          <span className="text-2xl font-bold tabular-nums">{pct(marge)}</span>
+        </div>
+        <div className="relative h-2.5 bg-black/5 rounded-full overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${marge >= STREEFMARGE ? 'bg-emerald-500' : marge >= 0.20 ? 'bg-amber-500' : 'bg-red-500'}`}
+            style={{ width: `${barWidth / 70 * 100}%` }}
+          />
+          <div className="absolute top-0 h-full w-0.5 bg-black/30" style={{ left: `${targetLeft}%` }} />
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-[10px] opacity-50">0%</span>
+          <span className="text-[10px] opacity-50" style={{ marginLeft: `${targetLeft - 15}%` }}>streef {pct(STREEFMARGE)}</span>
+          <span className="text-[10px] opacity-50">70%</span>
+        </div>
       </div>
-      <div className="relative h-2.5 bg-black/5 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-500 ${marge >= STREEFMARGE ? 'bg-emerald-500' : marge >= 0.20 ? 'bg-amber-500' : 'bg-red-500'}`}
-          style={{ width: `${barWidth / 70 * 100}%` }}
-        />
-        <div className="absolute top-0 h-full w-0.5 bg-black/30" style={{ left: `${targetLeft}%` }} />
-      </div>
-      <div className="flex justify-between mt-1">
-        <span className="text-[10px] opacity-50">0%</span>
-        <span className="text-[10px] opacity-50" style={{ marginLeft: `${targetLeft - 15}%` }}>streef {pct(STREEFMARGE)}</span>
-        <span className="text-[10px] opacity-50">70%</span>
+
+      {/* Totaal exemplaren — 1/3 width */}
+      <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold text-[var(--text-primary)] tabular-nums">
+          {totaalExemplaren.toLocaleString('nl-NL')}
+        </span>
+        <span className="text-xs text-[var(--text-tertiary)] uppercase tracking-wide mt-1">Exemplaren</span>
       </div>
     </div>
   );

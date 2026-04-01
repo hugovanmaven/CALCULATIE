@@ -1,4 +1,5 @@
 import type { TitelInput } from '../../api/types';
+import { NumberInput } from './NumberInput';
 
 interface Props {
   titelInput: TitelInput;
@@ -13,23 +14,33 @@ export function PartnershipSection({ titelInput, updateField }: Props) {
           type="checkbox"
           checked={titelInput.heeft_partner}
           onChange={e => updateField('heeft_partner', e.target.checked)}
-          className="rounded text-blue-600"
+          className="rounded text-[var(--accent)]"
         />
-        <span className="text-sm">Partnership (50/50 netto winst deling)</span>
+        <span className="text-sm">Partnership (winstdeling na auteur)</span>
       </label>
       {titelInput.heeft_partner && (
-        <div>
-          <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
-            Partner naam
-          </label>
-          <input
-            type="text"
-            value={titelInput.partner_naam}
-            onChange={e => updateField('partner_naam', e.target.value)}
-            placeholder="Bijv. POM"
-            className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+        <>
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">
+              Partner naam
+            </label>
+            <input
+              type="text"
+              value={titelInput.partner_naam}
+              onChange={e => updateField('partner_naam', e.target.value)}
+              placeholder="Bijv. POM"
+              className="w-full px-3 py-1.5 text-sm border border-[var(--border)] rounded-lg bg-[var(--bg-primary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none"
+            />
+          </div>
+          <NumberInput
+            label="Partner aandeel"
+            value={(titelInput.partner_winstdeling_pct ?? 0.50) * 100}
+            onChange={v => updateField('partner_winstdeling_pct', v / 100)}
+            suffix="%"
+            step={5}
+            help="% van winst na auteur — bijv. 50 = partner krijgt 50%, Maven 50%"
           />
-        </div>
+        </>
       )}
     </div>
   );

@@ -33,6 +33,7 @@ export interface DrukConfig {
   druknummer: number;
   oplage: number;
   drukkosten_per_ex: number;
+  kostenposten: KostenPost[];
 }
 
 export interface TitelInput {
@@ -90,15 +91,19 @@ export interface TitelInput {
   agent_staffel: StaffelTrede[];
   agent_pct: number;
   agent_voorschot: number;
+  agent_winstdeling_pct: number;
   vertaler_pct: number;
   vertaler_staffel: StaffelTrede[];
   vertaler_voorschot: number;
+  vertaler_winstdeling_pct: number;
   illustrator_pct: number;
   illustrator_staffel: StaffelTrede[];
   illustrator_voorschot: number;
+  illustrator_winstdeling_pct: number;
   // Partnership
   heeft_partner: boolean;
   partner_naam: string;
+  partner_winstdeling_pct: number;
   // Overige
   overige_kosten_pct: number;
   overige_kosten_items: OverigeKostenItem[];
@@ -261,6 +266,7 @@ export const DEFAULT_DRUK: DrukConfig = {
   druknummer: 1,
   oplage: 2000,
   drukkosten_per_ex: 1.20,
+  kostenposten: [...DEFAULT_KOSTENPOSTEN],
 };
 
 export const DEFAULT_TITEL_INPUT: TitelInput = {
@@ -318,15 +324,19 @@ export const DEFAULT_TITEL_INPUT: TitelInput = {
   agent_staffel: [],
   agent_pct: 0.0,
   agent_voorschot: 0,
+  agent_winstdeling_pct: 0.0,
   vertaler_pct: 0.0,
   vertaler_staffel: [],
   vertaler_voorschot: 0,
+  vertaler_winstdeling_pct: 0.0,
   illustrator_pct: 0.0,
   illustrator_staffel: [],
   illustrator_voorschot: 0,
+  illustrator_winstdeling_pct: 0.0,
   // Partnership
   heeft_partner: false,
   partner_naam: '',
+  partner_winstdeling_pct: 0.50,
   // Overige
   overige_kosten_pct: 0.0,
   overige_kosten_items: [],

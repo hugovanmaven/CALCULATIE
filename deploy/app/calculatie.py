@@ -107,23 +107,30 @@ class TitelInput:
     auteur_winstdeling_pct: float = 0.0  # bijv. 0.50 voor 50-50
     # Methode 2: Royalty-staffel (percentage van verkoopprijs ex BTW)
     auteur_royalty_staffel: list[StaffelTrede] = field(default_factory=list)
+    auteur_voorschot: float = 0.0
 
     # ── Derden: agent ──
     agent_staffel: list[StaffelTrede] = field(default_factory=list)
-    # Of simpel percentage (als geen staffel)
-    agent_pct: float = 0.0
+    agent_pct: float = 0.0              # royalty % van verkoopprijs ex BTW
+    agent_winstdeling_pct: float = 0.0  # % van brutowinst
+    agent_voorschot: float = 0.0
 
     # ── Derden: vertaler ──
-    vertaler_pct: float = 0.0           # % van verkoopprijs ex BTW (als geen staffel)
+    vertaler_pct: float = 0.0           # royalty % van verkoopprijs ex BTW
     vertaler_staffel: list[StaffelTrede] = field(default_factory=list)
+    vertaler_winstdeling_pct: float = 0.0
+    vertaler_voorschot: float = 0.0
 
     # ── Derden: illustrator ──
-    illustrator_pct: float = 0.0        # % van verkoopprijs ex BTW (als geen staffel)
+    illustrator_pct: float = 0.0        # royalty % van verkoopprijs ex BTW
     illustrator_staffel: list[StaffelTrede] = field(default_factory=list)
+    illustrator_winstdeling_pct: float = 0.0
+    illustrator_voorschot: float = 0.0
 
     # ── Partnership ──
-    heeft_partner: bool = False          # ja = 50-50 netto winst deling
+    heeft_partner: bool = False          # ja = netto winst deling na auteur
     partner_naam: str = ""               # bijv. "POM" of "UvNL"
+    partner_winstdeling_pct: float = 0.5 # default 50%
 
     # ── Overige kosten (percentage van netto omzet) ──
     overige_kosten_pct: float = 0.0
@@ -425,30 +432,31 @@ def bereken_kanaal(
     elif kanaal == "b2b":
         r.b2b_porto = t.b2b_porto_per_ex
 
-    # f) Derden
-    # Vertaler: staffel of vast percentage
-    if t.vertaler_staffel:
-        r.vertaler = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
-            t.vertaler_staffel, cumulatief_verkocht + 1, oplage
-        )
-    else:
-        r.vertaler = r.verkoopprijs_ex_btw * t.vertaler_pct
+    # f) Derden — royalty mode (staffel of vast %)
+    # Winstdeling wordt later berekend (na brutowinst), net als auteur
+    if t.vertaler_winstdeling_pct <= 0:
+        if t.vertaler_staffel:
+            r.vertaler = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
+                t.vertaler_staffel, cumulatief_verkocht + 1, oplage
+            )
+        else:
+            r.vertaler = r.verkoopprijs_ex_btw * t.vertaler_pct
 
-    # Illustrator: staffel of vast percentage
-    if t.illustrator_staffel:
-        r.illustrator = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
-            t.illustrator_staffel, cumulatief_verkocht + 1, oplage
-        )
-    else:
-        r.illustrator = r.verkoopprijs_ex_btw * t.illustrator_pct
+    if t.illustrator_winstdeling_pct <= 0:
+        if t.illustrator_staffel:
+            r.illustrator = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
+                t.illustrator_staffel, cumulatief_verkocht + 1, oplage
+            )
+        else:
+            r.illustrator = r.verkoopprijs_ex_btw * t.illustrator_pct
 
-    # Agent: staffel of vast percentage
-    if t.agent_staffel:
-        r.agent = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
-            t.agent_staffel, cumulatief_verkocht + 1, oplage
-        )
-    else:
-        r.agent = r.verkoopprijs_ex_btw * t.agent_pct
+    if t.agent_winstdeling_pct <= 0:
+        if t.agent_staffel:
+            r.agent = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
+                t.agent_staffel, cumulatief_verkocht + 1, oplage
+            )
+        else:
+            r.agent = r.verkoopprijs_ex_btw * t.agent_pct
 
     # g) Overige kosten
     r.overige_kosten = r.netto_omzet * t.overige_kosten_pct
@@ -485,13 +493,25 @@ def bereken_kanaal(
 
     auteur_totaal = r.auteur_royalty + r.auteur_winstdeling
 
+    # ── STAP 4b: Derden winstdeling (% van brutowinst, net als auteur) ──
+    derden_winstdeling = 0.0
+    if t.agent_winstdeling_pct > 0:
+        r.agent = r.brutowinst * t.agent_winstdeling_pct
+        derden_winstdeling += r.agent
+    if t.vertaler_winstdeling_pct > 0:
+        r.vertaler = r.brutowinst * t.vertaler_winstdeling_pct
+        derden_winstdeling += r.vertaler
+    if t.illustrator_winstdeling_pct > 0:
+        r.illustrator = r.brutowinst * t.illustrator_winstdeling_pct
+        derden_winstdeling += r.illustrator
+
     # ── STAP 5: Partner ──
     if t.heeft_partner:
-        winst_na_auteur = r.brutowinst - auteur_totaal
-        r.partner_winstdeling = winst_na_auteur * 0.5
+        winst_na_auteur = r.brutowinst - auteur_totaal - derden_winstdeling
+        r.partner_winstdeling = winst_na_auteur * t.partner_winstdeling_pct
 
     # ── STAP 6: Netto winst Maven ──
-    r.netto_winst_maven = r.brutowinst - auteur_totaal - r.partner_winstdeling
+    r.netto_winst_maven = r.brutowinst - auteur_totaal - derden_winstdeling - r.partner_winstdeling
 
     # Marge als % van netto omzet
     if r.netto_omzet > 0:

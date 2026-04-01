@@ -23,7 +23,14 @@ function migrateTitelInput(raw: any): TitelInput {
       druknummer: ti.druknummer || 1,
       oplage: ti.oplage_1e_druk || 2000,
       drukkosten_per_ex: ti.drukkosten_1e_druk || 1.20,
+      kostenposten: ti.kostenposten?.length ? [...ti.kostenposten] : [...DEFAULT_KOSTENPOSTEN],
     }];
+  } else {
+    // Ensure each druk has kostenposten
+    ti.drukken = ti.drukken.map(d => ({
+      ...d,
+      kostenposten: d.kostenposten?.length ? d.kostenposten : [...DEFAULT_KOSTENPOSTEN],
+    }));
   }
 
   // Ensure voorschot fields exist

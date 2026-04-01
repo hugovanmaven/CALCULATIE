@@ -15,16 +15,23 @@ const DEFAULT_STAFFEL: StaffelTrede[] = [
   { tot_exemplaren: 999999, percentage: 0.11 },
 ];
 
+/**
+ * DerdeBlock — same pattern as AuteurDealSection:
+ * Toggle between Winstdeling and Royalty (with staffel/vast + voorschot)
+ */
 function DerdeBlock({
   label,
   radioName,
+  // Royalty mode
   pctValue,
   onPctChange,
   staffel,
   onStaffelChange,
   voorschot,
   onVoorschotChange,
-  help,
+  // Winstdeling mode
+  winstdelingPct,
+  onWinstdelingPctChange,
 }: {
   label: string;
   radioName: string;
@@ -34,11 +41,31 @@ function DerdeBlock({
   onStaffelChange: (s: StaffelTrede[]) => void;
   voorschot?: number;
   onVoorschotChange?: (v: number) => void;
-  help?: string;
+  winstdelingPct?: number;
+  onWinstdelingPctChange?: (v: number) => void;
 }) {
-  const mode = staffel.length > 0 ? 'staffel' : 'vast';
+  // Determine mode: if winstdelingPct > 0 and no staffel and no royalty pct → winstdeling
+  // If staffel → royalty-staffel. If pctValue > 0 → royalty-vast. Else → inactive/winstdeling
+  const hasRoyalty = staffel.length > 0 || pctValue > 0;
+  const hasWinstdeling = (winstdelingPct ?? 0) > 0;
+  const mode = hasRoyalty ? 'royalty' : hasWinstdeling ? 'winstdeling' : 'royalty';
+  const royaltyMode = staffel.length > 0 ? 'staffel' : 'vast';
 
-  const setMode = (newMode: string) => {
+  const setMainMode = (newMode: string) => {
+    if (newMode === 'winstdeling') {
+      // Clear royalty fields
+      onPctChange(0);
+      onStaffelChange([]);
+      if ((winstdelingPct ?? 0) === 0 && onWinstdelingPctChange) {
+        onWinstdelingPctChange(0.10);
+      }
+    } else {
+      // Clear winstdeling
+      if (onWinstdelingPctChange) onWinstdelingPctChange(0);
+    }
+  };
+
+  const setRoyaltyMode = (newMode: string) => {
     if (newMode === 'vast') {
       onStaffelChange([]);
     } else {
@@ -52,52 +79,91 @@ function DerdeBlock({
   return (
     <div className="space-y-2">
       <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase">{label}</p>
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name={radioName}
-            checked={mode === 'vast'}
-            onChange={() => setMode('vast')}
-            className="text-[var(--accent)]"
-          />
-          <span className="text-sm">Vast %</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name={radioName}
-            checked={mode === 'staffel'}
-            onChange={() => setMode('staffel')}
-            className="text-[var(--accent)]"
-          />
-          <span className="text-sm">Staffel</span>
-        </label>
-      </div>
-      {mode === 'vast' ? (
+
+      {/* Main mode toggle: Royalty vs Winstdeling */}
+      {onWinstdelingPctChange && (
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name={`${radioName}_main`}
+              checked={mode === 'royalty'}
+              onChange={() => setMainMode('royalty')}
+              className="text-[var(--accent)]"
+            />
+            <span className="text-sm">Royalty</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name={`${radioName}_main`}
+              checked={mode === 'winstdeling'}
+              onChange={() => setMainMode('winstdeling')}
+              className="text-[var(--accent)]"
+            />
+            <span className="text-sm">Winstdeling</span>
+          </label>
+        </div>
+      )}
+
+      {mode === 'winstdeling' ? (
         <NumberInput
-          label={`${label} %`}
-          value={pctValue * 100}
-          onChange={v => onPctChange(v / 100)}
+          label={`${label} winstdeling`}
+          value={(winstdelingPct ?? 0) * 100}
+          onChange={v => onWinstdelingPctChange?.(v / 100)}
           suffix="%"
-          step={1}
-          help={help ?? '% van verkoopprijs ex BTW'}
+          step={5}
+          help="% van brutowinst"
         />
       ) : (
         <>
-          <StaffelEditor
-            staffel={staffel}
-            onChange={onStaffelChange}
-          />
-          {onVoorschotChange && (
+          {/* Royalty sub-mode: Vast % vs Staffel */}
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`${radioName}_royalty`}
+                checked={royaltyMode === 'vast'}
+                onChange={() => setRoyaltyMode('vast')}
+                className="text-[var(--accent)]"
+              />
+              <span className="text-sm">Vast %</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`${radioName}_royalty`}
+                checked={royaltyMode === 'staffel'}
+                onChange={() => setRoyaltyMode('staffel')}
+                className="text-[var(--accent)]"
+              />
+              <span className="text-sm">Staffel</span>
+            </label>
+          </div>
+
+          {royaltyMode === 'vast' ? (
             <NumberInput
-              label="Voorschot"
-              value={voorschot ?? 0}
-              onChange={onVoorschotChange}
-              prefix="&euro;"
-              step={500}
-              help="Wordt ingelopen via royalty per verkocht exemplaar"
+              label={`${label} %`}
+              value={pctValue * 100}
+              onChange={v => onPctChange(v / 100)}
+              suffix="%"
+              step={1}
+              help="% van verkoopprijs ex BTW"
             />
+          ) : (
+            <>
+              <StaffelEditor staffel={staffel} onChange={onStaffelChange} />
+              {onVoorschotChange && (
+                <NumberInput
+                  label="Voorschot"
+                  value={voorschot ?? 0}
+                  onChange={onVoorschotChange}
+                  prefix="&euro;"
+                  step={500}
+                  help="Wordt ingelopen via royalty per verkocht exemplaar"
+                />
+              )}
+            </>
           )}
         </>
       )}
@@ -114,7 +180,8 @@ function ExtraDerdeBlock({
   onChange: (updated: ExtraDerde) => void;
   onRemove: () => void;
 }) {
-  const mode = derde.staffel.length > 0 ? 'staffel' : 'vast';
+  const isWinstdeling = derde.type === 'winstdeling';
+  const royaltyMode = derde.staffel.length > 0 ? 'staffel' : 'vast';
 
   return (
     <div className="space-y-2 p-3 bg-[var(--bg-primary)] rounded-lg border border-[var(--border)]">
@@ -126,14 +193,6 @@ function ExtraDerdeBlock({
           placeholder="Naam (bijv. Co-auteur)"
           className="flex-1 px-2 py-1 text-sm border border-[var(--border)] rounded focus:ring-1 focus:ring-[var(--accent)]/30 outline-none bg-[var(--bg-secondary)]"
         />
-        <select
-          value={derde.type}
-          onChange={e => onChange({ ...derde, type: e.target.value as 'royalty' | 'winstdeling' })}
-          className="px-2 py-1 text-sm border border-[var(--border)] rounded outline-none bg-[var(--bg-secondary)]"
-        >
-          <option value="royalty">Royalty</option>
-          <option value="winstdeling">Winstdeling</option>
-        </select>
         <button
           onClick={onRemove}
           className="p-1 text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
@@ -143,61 +202,95 @@ function ExtraDerdeBlock({
         </button>
       </div>
 
-      {derde.type === 'royalty' && (
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name={`extra_${derde.id}_mode`}
-              checked={mode === 'vast'}
-              onChange={() => onChange({ ...derde, staffel: [] })}
-              className="text-[var(--accent)]"
-            />
-            <span className="text-sm">Vast %</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name={`extra_${derde.id}_mode`}
-              checked={mode === 'staffel'}
-              onChange={() => {
-                if (derde.staffel.length === 0) {
-                  onChange({ ...derde, percentage: 0, staffel: [...DEFAULT_STAFFEL] });
-                }
-              }}
-              className="text-[var(--accent)]"
-            />
-            <span className="text-sm">Staffel</span>
-          </label>
-        </div>
-      )}
+      {/* Main mode: Royalty vs Winstdeling */}
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name={`extra_${derde.id}_main`}
+            checked={!isWinstdeling}
+            onChange={() => onChange({ ...derde, type: 'royalty' })}
+            className="text-[var(--accent)]"
+          />
+          <span className="text-sm">Royalty</span>
+        </label>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="radio"
+            name={`extra_${derde.id}_main`}
+            checked={isWinstdeling}
+            onChange={() => onChange({ ...derde, type: 'winstdeling', staffel: [] })}
+            className="text-[var(--accent)]"
+          />
+          <span className="text-sm">Winstdeling</span>
+        </label>
+      </div>
 
-      {mode === 'vast' || derde.type === 'winstdeling' ? (
+      {isWinstdeling ? (
         <NumberInput
-          label={`${derde.naam || 'Extra'} %`}
+          label={`${derde.naam || 'Extra'} winstdeling`}
           value={derde.percentage * 100}
           onChange={v => onChange({ ...derde, percentage: v / 100 })}
           suffix="%"
-          step={1}
-          help={derde.type === 'royalty' ? '% van verkoopprijs ex BTW' : '% van brutowinst'}
+          step={5}
+          help="% van brutowinst"
         />
       ) : (
-        <StaffelEditor
-          staffel={derde.staffel}
-          onChange={s => onChange({ ...derde, staffel: s })}
-        />
-      )}
+        <>
+          {/* Royalty sub-mode */}
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`extra_${derde.id}_royalty`}
+                checked={royaltyMode === 'vast'}
+                onChange={() => onChange({ ...derde, staffel: [] })}
+                className="text-[var(--accent)]"
+              />
+              <span className="text-sm">Vast %</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`extra_${derde.id}_royalty`}
+                checked={royaltyMode === 'staffel'}
+                onChange={() => {
+                  if (derde.staffel.length === 0) {
+                    onChange({ ...derde, percentage: 0, staffel: [...DEFAULT_STAFFEL] });
+                  }
+                }}
+                className="text-[var(--accent)]"
+              />
+              <span className="text-sm">Staffel</span>
+            </label>
+          </div>
 
-      {/* Voorschot — only for royalty */}
-      {derde.type === 'royalty' && (
-        <NumberInput
-          label="Voorschot"
-          value={derde.voorschot ?? 0}
-          onChange={v => onChange({ ...derde, voorschot: v })}
-          prefix="&euro;"
-          step={500}
-          help="Wordt ingelopen via royalty"
-        />
+          {royaltyMode === 'vast' ? (
+            <NumberInput
+              label={`${derde.naam || 'Extra'} %`}
+              value={derde.percentage * 100}
+              onChange={v => onChange({ ...derde, percentage: v / 100 })}
+              suffix="%"
+              step={1}
+              help="% van verkoopprijs ex BTW"
+            />
+          ) : (
+            <StaffelEditor
+              staffel={derde.staffel}
+              onChange={s => onChange({ ...derde, staffel: s })}
+            />
+          )}
+
+          {/* Voorschot — only for royalty */}
+          <NumberInput
+            label="Voorschot"
+            value={derde.voorschot ?? 0}
+            onChange={v => onChange({ ...derde, voorschot: v })}
+            prefix="&euro;"
+            step={500}
+            help="Wordt ingelopen via royalty"
+          />
+        </>
       )}
     </div>
   );
@@ -239,6 +332,8 @@ export function DerdenSection({ titelInput, updateField }: Props) {
         onStaffelChange={s => updateField('agent_staffel', s)}
         voorschot={titelInput.agent_voorschot}
         onVoorschotChange={v => updateField('agent_voorschot', v)}
+        winstdelingPct={titelInput.agent_winstdeling_pct}
+        onWinstdelingPctChange={v => updateField('agent_winstdeling_pct', v)}
       />
 
       <DerdeBlock
@@ -250,6 +345,8 @@ export function DerdenSection({ titelInput, updateField }: Props) {
         onStaffelChange={s => updateField('vertaler_staffel', s)}
         voorschot={titelInput.vertaler_voorschot}
         onVoorschotChange={v => updateField('vertaler_voorschot', v)}
+        winstdelingPct={titelInput.vertaler_winstdeling_pct}
+        onWinstdelingPctChange={v => updateField('vertaler_winstdeling_pct', v)}
       />
 
       <DerdeBlock
@@ -261,6 +358,8 @@ export function DerdenSection({ titelInput, updateField }: Props) {
         onStaffelChange={s => updateField('illustrator_staffel', s)}
         voorschot={titelInput.illustrator_voorschot}
         onVoorschotChange={v => updateField('illustrator_voorschot', v)}
+        winstdelingPct={titelInput.illustrator_winstdeling_pct}
+        onWinstdelingPctChange={v => updateField('illustrator_winstdeling_pct', v)}
       />
 
       {extraDerden.map((d, i) => (
