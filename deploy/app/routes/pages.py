@@ -10,7 +10,8 @@ CALC_STATIC = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static",
 
 @bp.route("/")
 def portal():
-    return render_template("portal.html")
+    from flask import redirect
+    return redirect("/calculatie/")
 
 
 @bp.route("/calculatie/")
