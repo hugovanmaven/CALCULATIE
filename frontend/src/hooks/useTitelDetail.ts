@@ -198,14 +198,6 @@ export function useTitelDetail(titelId: string | null) {
     });
   }, []);
 
-  const mergeFields = useCallback((patch: Partial<TitelInput>) => {
-    setState(prev => ({
-      ...prev,
-      titelInput: { ...prev.titelInput, ...patch },
-      dirty: true,
-    }));
-  }, []);
-
   const setHerdrukOplages = useCallback((v: number[]) => {
     setState(prev => ({ ...prev, herdrukOplages: v, dirty: true }));
   }, []);
@@ -217,7 +209,6 @@ export function useTitelDetail(titelId: string | null) {
   return {
     titelInput: state.titelInput,
     updateField,
-    mergeFields,
     herdrukOplages: state.herdrukOplages,
     setHerdrukOplages,
     verdeling: state.verdeling,

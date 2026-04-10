@@ -36,39 +36,12 @@ export interface DrukConfig {
   kostenposten: KostenPost[];
 }
 
-// ── Sales dashboard sync (one-way, read-only) ──
-
-export interface SalesSource {
-  sales_titel_id: string;      // UUID from sales titels.titel_id
-  sales_editie_isbn: string;   // ISBN used to match edition
-  imprint?: string;            // e.g. "POM", "Universiteit van Nederland"
-  laatst_gesynchroniseerd: string; // ISO timestamp
-}
-
-export interface SalesTitelSearchResult {
-  id: number;
-  titel_id: string;
-  titel: string;
-  auteur: string;
-  imprint_naam?: string;
-  edities: SalesEditie[];
-}
-
-export interface SalesEditie {
-  id: number;
-  isbn: string;
-  verschijningsvorm: 'paperback' | 'hardcover' | 'e-book' | 'audiobook' | 'overig';
-  adviesprijs: number;
-  publicatiedatum: string | null;
-}
-
 export interface TitelInput {
   titel: string;
   auteur: string;
   isbn: string;
   verschijningsdatum: string;
   verschenen: boolean;
-  sales_source?: SalesSource;
   verkoopprijs_incl_btw: number;
   btw_percentage: number;
   boekhandelskorting: number;
@@ -266,10 +239,6 @@ export interface TitelListItem {
   drukken_count: number;
   gewogen_marge_pct: number | null;
   archived: boolean;
-  verschenen?: boolean;
-  verschijningsdatum?: string;
-  sales_linked?: boolean;
-  imprint?: string;
 }
 
 export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [

@@ -11,7 +11,7 @@ interface Props {
 
 export default function DetailView({ titelId, onBack }: Props) {
   const {
-    titelInput, updateField, mergeFields,
+    titelInput, updateField,
     herdrukOplages, setHerdrukOplages,
     verdeling, setVerdeling,
     dirty, loaded,
@@ -86,7 +86,6 @@ export default function DetailView({ titelId, onBack }: Props) {
             <CalculatieForm
               titelInput={titelInput}
               updateField={updateField}
-              mergeFields={mergeFields}
               herdrukOplages={herdrukOplages}
               setHerdrukOplages={setHerdrukOplages}
               verdeling={verdeling}
