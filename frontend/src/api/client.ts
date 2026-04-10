@@ -1,14 +1,9 @@
 import type {
   CalculateRequest, CalculateResponse, SensitivityResponse, ValidateResponse,
   StoredTitel, TitelListItem, OplageSimResponse,
-  SalesTitelSearchResult,
 } from './types';
 
 const BASE = '/calculatie/api';
-
-// Sales dashboard API lives on the parent maven-company.com domain.
-// Cross-origin, auth via Cloudflare Access cookie (credentials: 'include').
-const SALES_BASE = 'https://maven-company.com/sales/api';
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
@@ -94,34 +89,6 @@ export async function unarchiveTitel(id: string): Promise<void> {
 
 export async function listTitelsIncludeArchived(): Promise<TitelListItem[]> {
   return get('/titels?archived=true');
-}
-
-// ── Sales dashboard: read-only titel lookup ──
-
-interface SalesListResponse {
-  items: Array<{
-    id: number;
-    titel_id: string;
-    titel: string;
-    auteur: string;
-    imprint_naam?: string;
-  }>;
-  total: number;
-}
-
-export async function searchSalesTitels(query: string): Promise<SalesListResponse['items']> {
-  if (!query || query.length < 2) return [];
-  const url = `${SALES_BASE}/titels?search=${encodeURIComponent(query)}&page=1`;
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error(`Sales API error: ${res.status}`);
-  const data: SalesListResponse = await res.json();
-  return data.items;
-}
-
-export async function getSalesTitelDetail(id: number): Promise<SalesTitelSearchResult> {
-  const res = await fetch(`${SALES_BASE}/titels/${id}`, { credentials: 'include' });
-  if (!res.ok) throw new Error(`Sales API error: ${res.status}`);
-  return res.json();
 }
 
 export async function importCsv(file: File): Promise<{ imported: number }> {

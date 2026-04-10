@@ -1,19 +1,14 @@
-import { useState } from 'react';
 import type { TitelInput, DrukConfig } from '../../api/types';
 import { DEFAULT_KOSTENPOSTEN } from '../../api/types';
 import { NumberInput } from './NumberInput';
-import { SalesTitelSearch } from './SalesTitelSearch';
-import { Plus, Trash2, Search, Link2, RefreshCw } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 
 interface Props {
   titelInput: TitelInput;
   updateField: <K extends keyof TitelInput>(field: K, value: TitelInput[K]) => void;
-  mergeFields?: (patch: Partial<TitelInput>) => void;
 }
 
-export function BasisgegevensSection({ titelInput, updateField, mergeFields }: Props) {
-  const [searchOpen, setSearchOpen] = useState(false);
-  const salesSource = titelInput.sales_source;
+export function BasisgegevensSection({ titelInput, updateField }: Props) {
   const drukken = titelInput.drukken ?? [{ druknummer: 1, oplage: 2000, drukkosten_per_ex: 1.20 }];
 
   const updateDruk = (idx: number, field: keyof DrukConfig, value: number) => {
@@ -39,56 +34,6 @@ export function BasisgegevensSection({ titelInput, updateField, mergeFields }: P
 
   return (
     <div className="space-y-3">
-      {/* Sales dashboard sync banner */}
-      {salesSource ? (
-        <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-[var(--accent-light)] border border-[var(--accent)]/20">
-          <div className="flex items-center gap-2 min-w-0">
-            <Link2 size={14} className="text-[var(--accent)] shrink-0" />
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-[var(--text-primary)] truncate">
-                Gekoppeld aan Sales Dashboard
-                {salesSource.imprint && ` · ${salesSource.imprint}`}
-              </div>
-              <div className="text-[10px] text-[var(--text-tertiary)] truncate">
-                ISBN {salesSource.sales_editie_isbn} · laatst gesynct{' '}
-                {new Date(salesSource.laatst_gesynchroniseerd).toLocaleDateString('nl-NL')}
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => setSearchOpen(true)}
-            className="shrink-0 flex items-center gap-1 px-2 py-1 text-[10px] font-medium rounded-md text-[var(--accent)] hover:bg-[var(--bg-primary)] transition-colors"
-            title="Ververs uit Sales Dashboard"
-          >
-            <RefreshCw size={11} />
-            Ververs
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setSearchOpen(true)}
-          className="w-full flex items-center justify-center gap-2 p-2.5 rounded-lg border border-dashed border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent-light)] text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors text-xs font-medium"
-        >
-          <Search size={14} />
-          Zoek titel in Sales Dashboard
-        </button>
-      )}
-
-      <SalesTitelSearch
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onPick={patch => {
-          if (mergeFields) {
-            mergeFields(patch);
-          } else {
-            // Fallback: update fields one by one
-            (Object.keys(patch) as Array<keyof TitelInput>).forEach(k => {
-              updateField(k, patch[k] as TitelInput[typeof k]);
-            });
-          }
-        }}
-      />
-
       {/* Titel + Auteur */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
