@@ -375,6 +375,10 @@ def list_titels():
             "druknummer": ti.get("druknummer", 1),
             "gewogen_marge_pct": gewogen_marge,
             "archived": archived,
+            "verschenen": ti.get("verschenen", False),
+            "verschijningsdatum": ti.get("verschijningsdatum", ""),
+            "sales_linked": bool(ti.get("sales_source")),
+            "imprint": (ti.get("sales_source") or {}).get("imprint", ""),
         })
     return jsonify(items)
 

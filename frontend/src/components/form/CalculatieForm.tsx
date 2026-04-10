@@ -14,6 +14,7 @@ import { VerdelingSection } from './VerdelingSection';
 interface Props {
   titelInput: TitelInput;
   updateField: <K extends keyof TitelInput>(field: K, value: TitelInput[K]) => void;
+  mergeFields?: (patch: Partial<TitelInput>) => void;
   herdrukOplages?: number[];
   setHerdrukOplages?: (v: number[]) => void;
   verdeling: { webshop: number; retail: number; b2b: number };
@@ -32,14 +33,14 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 }
 
 export function CalculatieForm({
-  titelInput, updateField,
+  titelInput, updateField, mergeFields,
   verdeling, setVerdeling,
 }: Props) {
   return (
     <div className="space-y-1">
       {/* ─── TITEL & BOEK ─── */}
       <Section title="Basisgegevens" defaultOpen>
-        <BasisgegevensSection titelInput={titelInput} updateField={updateField} />
+        <BasisgegevensSection titelInput={titelInput} updateField={updateField} mergeFields={mergeFields} />
       </Section>
 
       {/* ─── PRODUCTIE & KOSTEN ─── */}

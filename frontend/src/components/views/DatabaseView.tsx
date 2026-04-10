@@ -1,6 +1,36 @@
 import { useState, useMemo, useRef } from 'react';
 import type { TitelListItem } from '../../api/types';
-import { Search, Plus, Trash2, Archive, ArchiveRestore, Upload, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Plus, Trash2, Archive, ArchiveRestore, Upload, ChevronDown, ChevronUp, Link2 } from 'lucide-react';
+
+function PublishStatus({ item }: { item: TitelListItem }) {
+  const date = item.verschijningsdatum;
+  if (!date) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--text-tertiary)]">
+        <span className="w-1.5 h-1.5 rounded-full bg-neutral-300" />
+        Geen datum
+      </span>
+    );
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const verschenen = item.verschenen || date <= today;
+  if (verschenen) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+        Verschenen {new Date(date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: '2-digit' })}
+      </span>
+    );
+  }
+  const daysUntil = Math.round((new Date(date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  const relative = daysUntil <= 7 ? `over ${daysUntil} d.` : daysUntil <= 60 ? `over ${Math.round(daysUntil / 7)} wk.` : `over ${Math.round(daysUntil / 30)} mnd.`;
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700">
+      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+      {relative} ({new Date(date).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: '2-digit' })})
+    </span>
+  );
+}
 
 interface Props {
   items: TitelListItem[];
@@ -254,8 +284,22 @@ export default function DatabaseView({
                         />
                       </td>
                       <td className="px-3 py-3">
-                        <div className="font-medium text-[var(--text-primary)]">{item.titel || 'Naamloze titel'}</div>
-                        <div className="text-xs text-[var(--text-tertiary)] sm:hidden mt-0.5">{item.auteur}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-medium text-[var(--text-primary)]">{item.titel || 'Naamloze titel'}</span>
+                          {item.sales_linked && (
+                            <span
+                              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded bg-[var(--accent-light)] text-[var(--accent)]"
+                              title={item.imprint ? `Sales-gekoppeld · ${item.imprint}` : 'Sales-gekoppeld'}
+                            >
+                              <Link2 size={9} />
+                              Sales
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <PublishStatus item={item} />
+                          <span className="text-xs text-[var(--text-tertiary)] sm:hidden">{item.auteur}</span>
+                        </div>
                       </td>
                       <td className="px-3 py-3 text-[var(--text-secondary)] hidden sm:table-cell">{item.auteur}</td>
                       <td className="px-3 py-3 text-center text-[var(--text-secondary)]">
