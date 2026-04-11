@@ -310,17 +310,22 @@ function VerkoopprijsAdvies({ priceSens, currentPrice }: { priceSens: Sensitivit
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
         {filteredRows.map((row, i) => {
           const isCurrent = Math.abs(row.variable_value - currentPrice) < 0.01;
+          const marge = row.gewogen_marge_pct;
+          const stripeColor = marge >= STREEFMARGE ? 'bg-emerald-500'
+            : marge >= 0.20 ? 'bg-amber-500'
+            : 'bg-red-400';
           return (
-            <div key={i} className={`text-center p-2.5 rounded-lg ${
-              isCurrent ? 'bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30' : 'bg-[var(--bg-primary)]'
-            }`}>
-              <div className={`text-base font-bold tabular-nums mb-0.5 ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>
-                &euro; {fmt(row.variable_value)}
+            <div key={i} className={`rounded-lg overflow-hidden ${isCurrent ? 'ring-1 ring-[var(--accent)]/40' : ''}`}>
+              <div className={`h-1 w-full ${isCurrent ? 'bg-[var(--accent)]' : stripeColor}`} />
+              <div className={`text-center p-2.5 ${isCurrent ? 'bg-[var(--accent)]/10' : 'bg-[var(--bg-primary)]'}`}>
+                <div className={`text-xs font-semibold tabular-nums mb-0.5 ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>
+                  &euro; {fmt(row.variable_value)}
+                  {isCurrent && <span className="ml-1 font-normal opacity-70">huidig</span>}
+                </div>
+                <div className={`text-lg font-bold tabular-nums ${
+                  marge >= STREEFMARGE ? 'text-emerald-600' : marge >= 0.20 ? 'text-amber-600' : 'text-red-600'
+                }`}>{pct(marge)}</div>
               </div>
-              {isCurrent && <div className="text-[9px] text-[var(--accent)] uppercase tracking-wide mb-0.5">huidig</div>}
-              <div className={`text-sm font-semibold tabular-nums ${
-                row.gewogen_marge_pct >= STREEFMARGE ? 'text-emerald-600' : row.gewogen_marge_pct >= 0.20 ? 'text-amber-600' : 'text-red-600'
-              }`}>{pct(row.gewogen_marge_pct)}</div>
             </div>
           );
         })}
@@ -329,38 +334,50 @@ function VerkoopprijsAdvies({ priceSens, currentPrice }: { priceSens: Sensitivit
   );
 }
 
+type KostenTab = 'gemiddelde' | 'retail' | 'webshop' | 'b2b';
+const KOSTEN_TABS: { key: KostenTab; label: string }[] = [
+  { key: 'gemiddelde', label: 'Gemiddelde' },
+  { key: 'retail', label: 'Retail / CB' },
+  { key: 'webshop', label: 'Webshop' },
+  { key: 'b2b', label: 'B2B' },
+];
+
 function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop: number; retail: number; b2b: number } }) {
   const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<KostenTab>('gemiddelde');
 
-  const w = (field: string) => {
-    return druk.webshop[field] * verdeling.webshop
-      + druk.retail[field] * verdeling.retail
-      + druk.b2b[field] * verdeling.b2b;
+  const v = (field: string): number => {
+    if (activeTab === 'gemiddelde') {
+      return druk.webshop[field] * verdeling.webshop
+        + druk.retail[field] * verdeling.retail
+        + druk.b2b[field] * verdeling.b2b;
+    }
+    return druk[activeTab]?.[field] ?? 0;
   };
 
   const lines: { label: string; value: number; type?: 'subtotal' }[] = [
-    { label: 'Verkoopprijs ex BTW', value: w('verkoopprijs_ex_btw') },
-    { label: 'Boekhandelskorting', value: -w('korting_bedrag') },
-    { label: 'Netto omzet', value: w('netto_omzet'), type: 'subtotal' },
-    { label: 'Drukkosten /ex', value: -w('drukkosten') },
-    { label: 'Kostenposten /ex', value: -w('kosten_per_ex') },
-    { label: 'Fulfillment', value: -w('fulfillment') },
-    { label: 'Distributie CB', value: -w('distributie_cb') },
-    { label: 'B2B porto', value: -w('b2b_porto') },
-    { label: 'Transactiekosten', value: -w('transactiekosten') },
-    { label: 'CAC', value: -w('cac') },
-    { label: 'Vertaler', value: -w('vertaler') },
-    { label: 'Illustrator', value: -w('illustrator') },
-    { label: 'Agent', value: -w('agent') },
-    { label: 'Overige kosten', value: -w('overige_kosten') },
-    { label: 'Brutowinst', value: w('brutowinst'), type: 'subtotal' },
-    { label: 'Auteur royalty', value: -w('auteur_royalty') },
-    { label: 'Auteur winstdeling', value: -w('auteur_winstdeling') },
-    { label: 'Partner winstdeling', value: -w('partner_winstdeling') },
-    { label: 'Netto winst Maven', value: w('netto_winst_maven'), type: 'subtotal' },
+    { label: 'Verkoopprijs ex BTW', value: v('verkoopprijs_ex_btw') },
+    { label: 'Boekhandelskorting', value: -v('korting_bedrag') },
+    { label: 'Netto omzet', value: v('netto_omzet'), type: 'subtotal' },
+    { label: 'Drukkosten /ex', value: -v('drukkosten') },
+    { label: 'Kostenposten /ex', value: -v('kosten_per_ex') },
+    { label: 'Fulfillment', value: -v('fulfillment') },
+    { label: 'Distributie CB', value: -v('distributie_cb') },
+    { label: 'B2B porto', value: -v('b2b_porto') },
+    { label: 'Transactiekosten', value: -v('transactiekosten') },
+    { label: 'CAC', value: -v('cac') },
+    { label: 'Vertaler', value: -v('vertaler') },
+    { label: 'Illustrator', value: -v('illustrator') },
+    { label: 'Agent', value: -v('agent') },
+    { label: 'Overige kosten', value: -v('overige_kosten') },
+    { label: 'Brutowinst', value: v('brutowinst'), type: 'subtotal' },
+    { label: 'Auteur royalty', value: -v('auteur_royalty') },
+    { label: 'Auteur winstdeling', value: -v('auteur_winstdeling') },
+    { label: 'Partner winstdeling', value: -v('partner_winstdeling') },
+    { label: 'Netto winst Maven', value: v('netto_winst_maven'), type: 'subtotal' },
   ].filter((l): l is { label: string; value: number; type?: 'subtotal' } => Math.abs(l.value) > 0.001 || l.type === 'subtotal');
 
-  const nettoOmzet = w('netto_omzet');
+  const nettoOmzet = v('netto_omzet');
 
   return (
     <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl overflow-hidden">
@@ -368,26 +385,46 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
         onClick={() => setOpen(!open)}
         className="w-full px-4 py-3 flex items-center justify-between text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
       >
-        <span>Kostenopbouw (gewogen gemiddelde)</span>
+        <span>Kostenopbouw</span>
         {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
       </button>
       {open && (
-        <div className="px-4 pb-4 space-y-0.5">
-          {lines.map((line, i) => (
-            <div key={i} className={`flex items-center justify-between text-sm py-1.5 px-3 rounded-lg ${
-              line.type === 'subtotal' ? 'bg-[var(--bg-primary)] font-semibold mt-1' : ''
-            }`}>
-              <span className="text-[var(--text-secondary)]">{line.label}</span>
-              <div className="flex items-center gap-3 tabular-nums">
-                <span className={line.value < 0 ? 'text-red-600' : 'text-[var(--text-primary)]'}>&euro; {fmt(line.value)}</span>
-                {nettoOmzet > 0 && (
-                  <span className="text-[10px] text-[var(--text-tertiary)] w-12 text-right">
-                    {((line.value / nettoOmzet) * 100).toFixed(1)}%
-                  </span>
-                )}
+        <div className="px-4 pb-4">
+          {/* Tabs */}
+          <div className="flex w-fit rounded-lg border border-[var(--border)] overflow-hidden text-xs mb-3">
+            {KOSTEN_TABS.map((tab, i) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-3 py-1.5 font-medium transition-colors ${i > 0 ? 'border-l border-[var(--border)]' : ''} ${
+                  activeTab === tab.key
+                    ? 'bg-[var(--accent)] text-white'
+                    : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Waterfall lines */}
+          <div className="space-y-0.5">
+            {lines.map((line, i) => (
+              <div key={i} className={`flex items-center justify-between text-sm py-1.5 px-3 rounded-lg ${
+                line.type === 'subtotal' ? 'bg-[var(--bg-primary)] font-semibold mt-1' : ''
+              }`}>
+                <span className="text-[var(--text-secondary)]">{line.label}</span>
+                <div className="flex items-center gap-3 tabular-nums">
+                  <span className={line.value < 0 ? 'text-red-600' : 'text-[var(--text-primary)]'}>&euro; {fmt(line.value)}</span>
+                  {nettoOmzet > 0 && (
+                    <span className="text-[10px] text-[var(--text-tertiary)] w-12 text-right">
+                      {((line.value / nettoOmzet) * 100).toFixed(1)}%
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>
