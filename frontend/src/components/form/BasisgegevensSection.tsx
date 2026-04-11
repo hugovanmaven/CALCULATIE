@@ -103,7 +103,7 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
       <div className="h-px bg-[var(--border)]" />
 
       {/* ─── Blok 2: Prijs ─── */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3 items-end">
         <NumberInput
           label="Verkoopprijs incl BTW"
           value={titelInput.verkoopprijs_incl_btw}
@@ -200,9 +200,6 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
           <Plus size={14} />
           Herdruk toevoegen
         </button>
-        <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-          Eenmalige kosten tellen alleen bij de 1e druk.
-        </p>
       </div>
     </div>
   );

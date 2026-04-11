@@ -13,11 +13,11 @@ export function VerdelingSection({ verdeling, setVerdeling }: Props) {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-gray-400">Verwachte verdeling van verkopen over kanalen</p>
+      <p className="text-xs text-[var(--text-tertiary)]">Verwachte verdeling van verkopen over kanalen</p>
       <div className="grid grid-cols-3 gap-2">
         {(['webshop', 'retail', 'b2b'] as const).map(kanaal => (
           <div key={kanaal}>
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">
+            <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">
               {kanaal === 'retail' ? 'Retail / CB' : kanaal === 'b2b' ? 'B2B' : 'Webshop'}
             </label>
             <div className="flex items-center">
@@ -28,9 +28,9 @@ export function VerdelingSection({ verdeling, setVerdeling }: Props) {
                 step={5}
                 min={0}
                 max={100}
-                className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded-l focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-2 py-1.5 text-sm border border-[var(--border)] rounded-l bg-[var(--bg-primary)] text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] outline-none"
               />
-              <span className="inline-flex items-center px-2 py-1.5 text-xs text-gray-500 bg-gray-100 border border-l-0 border-gray-300 rounded-r">
+              <span className="inline-flex items-center px-2 py-1.5 text-xs text-[var(--text-tertiary)] bg-[var(--bg-secondary)] border border-l-0 border-[var(--border)] rounded-r">
                 %
               </span>
             </div>
@@ -39,7 +39,7 @@ export function VerdelingSection({ verdeling, setVerdeling }: Props) {
       </div>
 
       {/* Visual bar */}
-      <div className="h-3 rounded-full overflow-hidden flex bg-gray-200">
+      <div className="h-3 rounded-full overflow-hidden flex bg-[var(--border)]">
         {verdeling.webshop > 0 && (
           <div
             className="bg-blue-500 transition-all"
@@ -62,7 +62,7 @@ export function VerdelingSection({ verdeling, setVerdeling }: Props) {
           />
         )}
       </div>
-      <div className="flex justify-between text-xs text-gray-400">
+      <div className="flex justify-between text-xs text-[var(--text-tertiary)]">
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500 inline-block" /> Webshop</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Retail</span>
         <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" /> B2B</span>

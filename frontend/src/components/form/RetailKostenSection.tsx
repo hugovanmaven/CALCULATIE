@@ -16,7 +16,7 @@ export function RetailKostenSection({ titelInput, updateField }: Props) {
         prefix="€"
         help="CB logistiek + distributie per exemplaar"
       />
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-[var(--text-tertiary)]">
         Boekhandelskorting ({(titelInput.boekhandelskorting * 100).toFixed(0)}%) is ingesteld bij Basisgegevens
       </p>
     </div>

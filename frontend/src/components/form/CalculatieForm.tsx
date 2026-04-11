@@ -54,7 +54,7 @@ export function CalculatieForm({
         <VerdelingSection verdeling={verdeling} setVerdeling={setVerdeling} />
       </Section>
 
-      <Section title="Webshop kosten">
+      <Section title="Webshopkosten">
         <WebshopKostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
@@ -62,14 +62,14 @@ export function CalculatieForm({
         <RetailKostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
-      <Section title="B2B kosten">
+      <Section title="B2B-kosten">
         <B2bKostenSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
       {/* ─── DEALS & PARTNERS ─── */}
       <GroupLabel>Deals &amp; partners</GroupLabel>
 
-      <Section title="Auteur deal" defaultOpen>
+      <Section title="Auteur" defaultOpen>
         <AuteurDealSection titelInput={titelInput} updateField={updateField} />
       </Section>
 

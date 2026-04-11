@@ -29,27 +29,28 @@ export function AuteurDealSection({ titelInput, updateField }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="auteur_mode"
-            checked={mode === 'winstdeling'}
-            onChange={() => setMode('winstdeling')}
-            className="text-[var(--accent)]"
-          />
-          <span className="text-sm">Winstdeling</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="radio"
-            name="auteur_mode"
-            checked={mode === 'royalty'}
-            onChange={() => setMode('royalty')}
-            className="text-[var(--accent)]"
-          />
-          <span className="text-sm">Royalty-staffel</span>
-        </label>
+      {/* Mode toggle */}
+      <div className="flex w-fit rounded-lg border border-[var(--border)] overflow-hidden text-sm">
+        <button
+          onClick={() => setMode('winstdeling')}
+          className={`px-3 py-1.5 font-medium transition-colors ${
+            mode === 'winstdeling'
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+          }`}
+        >
+          Winstdeling
+        </button>
+        <button
+          onClick={() => setMode('royalty')}
+          className={`px-3 py-1.5 font-medium border-l border-[var(--border)] transition-colors ${
+            mode === 'royalty'
+              ? 'bg-[var(--accent)] text-white'
+              : 'bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]'
+          }`}
+        >
+          Royalty-staffel
+        </button>
       </div>
 
       {mode === 'winstdeling' ? (
@@ -72,7 +73,7 @@ export function AuteurDealSection({ titelInput, updateField }: Props) {
             label="Voorschot"
             value={titelInput.auteur_voorschot ?? 0}
             onChange={v => updateField('auteur_voorschot', v)}
-            prefix="&euro;"
+            prefix="€"
             step={500}
             help="Wordt ingelopen via royalty per verkocht exemplaar"
           />

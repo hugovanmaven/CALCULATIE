@@ -45,37 +45,45 @@ export function OverigeKostenSection({ titelInput, updateField }: Props) {
       )}
 
       {items.map((item, i) => (
-        <div key={item.id} className="flex items-end gap-2 p-2 bg-gray-50 rounded border border-gray-200">
+        <div key={item.id} className="flex items-end gap-2 p-2.5 bg-[var(--bg-primary)] rounded-lg border border-[var(--border)]">
           <div className="flex-1">
+            <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">
+              Omschrijving
+            </label>
             <input
               type="text"
               value={item.naam}
               onChange={e => updateItem(i, { ...item, naam: e.target.value })}
-              placeholder="Omschrijving"
-              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              placeholder="Bijv. PR-bureau"
+              className="w-full px-2 py-1.5 text-sm border border-[var(--border)] rounded-lg focus:ring-1 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] outline-none bg-[var(--bg-secondary)] text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
             />
           </div>
-          <select
-            value={item.type}
-            onChange={e => updateItem(i, { ...item, type: e.target.value as 'bedrag' | 'percentage' })}
-            className="px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-          >
-            <option value="bedrag">Bedrag</option>
-            <option value="percentage">%</option>
-          </select>
-          <div className="w-24">
+          <div>
+            <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">
+              Type
+            </label>
+            <select
+              value={item.type}
+              onChange={e => updateItem(i, { ...item, type: e.target.value as 'bedrag' | 'percentage' })}
+              className="px-2 py-1.5 text-sm border border-[var(--border)] rounded-lg bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--accent)]/30 outline-none"
+            >
+              <option value="bedrag">€ Bedrag</option>
+              <option value="percentage">% Omzet</option>
+            </select>
+          </div>
+          <div className="w-28">
             <NumberInput
-              label=""
+              label="Waarde"
               value={item.type === 'percentage' ? item.waarde * 100 : item.waarde}
               onChange={v => updateItem(i, { ...item, waarde: item.type === 'percentage' ? v / 100 : v })}
-              prefix={item.type === 'bedrag' ? '\u20ac' : undefined}
+              prefix={item.type === 'bedrag' ? '€' : undefined}
               suffix={item.type === 'percentage' ? '%' : undefined}
               step={item.type === 'bedrag' ? 10 : 0.5}
             />
           </div>
           <button
             onClick={() => removeItem(i)}
-            className="p-1 text-gray-400 hover:text-red-500 transition-colors mb-0.5"
+            className="p-1.5 text-[var(--text-tertiary)] hover:text-red-500 transition-colors mb-0.5"
             title="Verwijderen"
           >
             <Trash2 size={14} />
@@ -85,7 +93,7 @@ export function OverigeKostenSection({ titelInput, updateField }: Props) {
 
       <button
         onClick={addItem}
-        className="flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors"
+        className="flex items-center gap-1.5 text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium transition-colors"
       >
         <Plus size={14} />
         Kostenpost toevoegen

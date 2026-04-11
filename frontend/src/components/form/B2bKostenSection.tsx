@@ -8,7 +8,7 @@ interface Props {
 
 export function B2bKostenSection({ titelInput, updateField }: Props) {
   return (
-    <div className="space-y-3">
+    <div className="grid grid-cols-2 gap-x-3 gap-y-3">
       <NumberInput
         label="Porto per ex"
         value={titelInput.b2b_porto_per_ex}
@@ -16,12 +16,12 @@ export function B2bKostenSection({ titelInput, updateField }: Props) {
         prefix="€"
       />
       <NumberInput
-        label="B2B korting"
+        label="B2B-korting"
         value={titelInput.b2b_korting_pct * 100}
         onChange={v => updateField('b2b_korting_pct', v / 100)}
         suffix="%"
         step={1}
-        help="Korting die Maven biedt aan B2B klanten"
+        help="Korting aan B2B klanten"
       />
     </div>
   );

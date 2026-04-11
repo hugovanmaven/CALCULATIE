@@ -25,11 +25,13 @@ export function StaffelEditor({ staffel, onChange, label }: Props) {
 
   return (
     <div className="space-y-2">
-      {label && <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>}
+      {label && (
+        <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide">{label}</p>
+      )}
       {staffel.length > 0 && (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs text-gray-400 uppercase">
+            <tr className="text-xs text-[var(--text-tertiary)] uppercase">
               <th className="text-left py-1 font-medium">#</th>
               <th className="text-left py-1 font-medium">Tot exemplaren</th>
               <th className="text-left py-1 font-medium">Percentage</th>
@@ -38,14 +40,14 @@ export function StaffelEditor({ staffel, onChange, label }: Props) {
           </thead>
           <tbody>
             {staffel.map((trede, i) => (
-              <tr key={i} className="border-t border-gray-100">
-                <td className="py-1 text-gray-400">{i + 1}</td>
+              <tr key={i} className="border-t border-[var(--border)]">
+                <td className="py-1 text-[var(--text-tertiary)]">{i + 1}</td>
                 <td className="py-1 pr-2">
                   <input
                     type="number"
                     value={trede.tot_exemplaren || ''}
                     onChange={e => updateTrede(i, 'tot_exemplaren', parseInt(e.target.value) || 0)}
-                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                    className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--bg-primary)] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
                     step={1000}
                   />
                 </td>
@@ -53,12 +55,12 @@ export function StaffelEditor({ staffel, onChange, label }: Props) {
                   <div className="flex items-center">
                     <input
                       type="number"
-                      value={(trede.percentage * 100) || ''}
+                      value={parseFloat((trede.percentage * 100).toFixed(8)) || ''}
                       onChange={e => updateTrede(i, 'percentage', (parseFloat(e.target.value) || 0) / 100)}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded-l"
+                      className="w-full px-2 py-1 text-sm border border-[var(--border)] rounded-l bg-[var(--bg-primary)] text-[var(--text-primary)] outline-none focus:ring-1 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)]"
                       step={0.5}
                     />
-                    <span className="inline-flex items-center px-2 py-1 text-xs text-gray-500 bg-gray-100 border border-l-0 border-gray-300 rounded-r">
+                    <span className="inline-flex items-center px-2 py-1 text-xs text-[var(--text-tertiary)] bg-[var(--bg-secondary)] border border-l-0 border-[var(--border)] rounded-r">
                       %
                     </span>
                   </div>
@@ -66,7 +68,7 @@ export function StaffelEditor({ staffel, onChange, label }: Props) {
                 <td className="py-1">
                   <button
                     onClick={() => removeTrede(i)}
-                    className="p-1 text-gray-400 hover:text-red-500"
+                    className="p-1 text-[var(--text-tertiary)] hover:text-red-500 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -78,7 +80,7 @@ export function StaffelEditor({ staffel, onChange, label }: Props) {
       )}
       <button
         onClick={addTrede}
-        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+        className="flex items-center gap-1 text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium transition-colors"
       >
         <Plus className="w-3.5 h-3.5" />
         Trede toevoegen
