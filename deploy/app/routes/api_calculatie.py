@@ -621,8 +621,13 @@ def simulate_oplage():
 @bp.route("/api/import/csv", methods=["POST"])
 def import_csv_file():
     """Import titels vanuit een CSV-bestand.
-    Verwacht kolommen: titel, auteur, isbn, druknummer
-    Optioneel: verkoopprijs_incl_btw, oplage_1e_druk, drukkosten_1e_druk, boekhandelskorting, etc.
+
+    Meerdere rijen met hetzelfde ISBN (of dezelfde titel+auteur) worden
+    samengevoegd tot één titel met meerdere drukken.
+
+    Verplicht: titel
+    Aanbevolen: auteur, isbn, druknummer, oplage, drukkosten_per_ex,
+                verkoopprijs_incl_btw, boekhandelskorting, auteur_winstdeling_pct
     """
     if "file" not in request.files:
         abort(400, description="Geen bestand meegegeven")
@@ -638,36 +643,60 @@ def import_csv_file():
     fieldnames = reader.fieldnames or []
     if len(fieldnames) <= 1:
         reader = csv.DictReader(io.StringIO(raw), delimiter=",")
-        fieldnames = reader.fieldnames or []
 
-    count = 0
+    def parse_float(row, key, default=0.0, *aliases):
+        for k in [key] + list(aliases):
+            v = row.get(k, "")
+            if v:
+                try:
+                    return float(v.replace(",", "."))
+                except (ValueError, TypeError):
+                    pass
+        return default
+
+    # Group rows by ISBN (or titel+auteur if no ISBN) to support multiple drukken
+    from collections import OrderedDict
+    groups = OrderedDict()  # key -> (first_row, [druk_rows])
+
     for row in reader:
-        # Normalize keys: strip whitespace, lowercase
         row = {k.strip().lower(): v.strip() for k, v in row.items() if k}
-
         titel = row.get("titel", "").strip()
         if not titel:
             continue
 
-        auteur = row.get("auteur", "")
-        isbn = row.get("isbn", "")
+        isbn = row.get("isbn", "").strip()
+        group_key = isbn if isbn else f"{titel}|{row.get('auteur', '')}"
 
-        # Parse druknummer
-        druk_raw = row.get("druknummer", row.get("druk", "1"))
-        try:
-            druknummer = max(1, int(druk_raw))
-        except (ValueError, TypeError):
-            druknummer = 1
+        if group_key not in groups:
+            groups[group_key] = (row, [])
+        groups[group_key][1].append(row)
 
-        # Optional numeric fields
-        def parse_float(key, default=0.0):
-            v = row.get(key, "")
-            if not v:
-                return default
+    count = 0
+    for group_key, (first_row, druk_rows) in groups.items():
+        titel = first_row.get("titel", "").strip()
+        auteur = first_row.get("auteur", "")
+        isbn = first_row.get("isbn", "")
+
+        # Build drukken list from all rows in group, sorted by druknummer
+        drukken = []
+        for row in druk_rows:
+            druk_raw = row.get("druknummer", row.get("druk", "1"))
             try:
-                return float(v.replace(",", "."))
+                druknummer = max(1, int(druk_raw))
             except (ValueError, TypeError):
-                return default
+                druknummer = 1
+
+            oplage = int(parse_float(row, "oplage", 2000, "oplage_1e_druk"))
+            drukkosten = parse_float(row, "drukkosten_per_ex", 1.20, "drukkosten_1e_druk", "drukkosten")
+
+            drukken.append({
+                "druknummer": druknummer,
+                "oplage": oplage,
+                "drukkosten_per_ex": drukkosten,
+                "kostenposten": [],
+            })
+
+        drukken.sort(key=lambda d: d["druknummer"])
 
         tid = storage.new_id()
         titel_data = {
@@ -675,24 +704,19 @@ def import_csv_file():
                 "titel": titel,
                 "auteur": auteur,
                 "isbn": isbn,
-                "verschijningsdatum": row.get("verschijningsdatum", ""),
-                "verschenen": druknummer >= 1,
-                "verkoopprijs_incl_btw": parse_float("verkoopprijs_incl_btw", 20.0),
-                "btw_percentage": parse_float("btw_percentage", 0.09),
-                "boekhandelskorting": parse_float("boekhandelskorting", 0.48),
-                "drukken": [{
-                    "druknummer": druknummer,
-                    "oplage": int(parse_float("oplage_1e_druk", 2000)),
-                    "drukkosten_per_ex": parse_float("drukkosten_1e_druk", 1.20),
-                    "kostenposten": [],
-                }],
+                "verschijningsdatum": first_row.get("verschijningsdatum", ""),
+                "verschenen": True,
+                "verkoopprijs_incl_btw": parse_float(first_row, "verkoopprijs_incl_btw", 20.0),
+                "btw_percentage": parse_float(first_row, "btw_percentage", 0.09),
+                "boekhandelskorting": parse_float(first_row, "boekhandelskorting", 0.48),
+                "drukken": drukken,
                 "transactiekosten_pct": 0.02,
                 "fulfillment_per_ex": 4.50,
                 "cac_per_ex": 0.0,
                 "distributie_cb_per_ex": 1.10,
                 "b2b_porto_per_ex": 0.0,
                 "b2b_korting_pct": 0.0,
-                "auteur_winstdeling_pct": parse_float("auteur_winstdeling_pct", 0.50),
+                "auteur_winstdeling_pct": parse_float(first_row, "auteur_winstdeling_pct", 0.50),
                 "auteur_royalty_staffel": [],
                 "auteur_voorschot": 0,
                 "agent_pct": 0.0, "agent_staffel": [], "agent_winstdeling_pct": 0.0, "agent_voorschot": 0,
