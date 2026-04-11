@@ -46,7 +46,7 @@ export function NumberInput({
           step={step}
           min={min}
           max={max}
-          className={`w-full min-w-0 px-3 py-1.5 text-sm border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] tabular-nums focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none ${
+          className={`w-full min-w-0 px-3 py-1.5 text-sm border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] text-right tabular-nums focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none ${
             prefix ? '' : 'rounded-l-lg'
           } ${suffix ? '' : 'rounded-r-lg'}`}
         />

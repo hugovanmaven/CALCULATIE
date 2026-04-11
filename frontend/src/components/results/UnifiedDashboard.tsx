@@ -42,11 +42,12 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
   const druk = results.drukken[0];
   if (!druk) return null;
 
-  const totaalExemplaren = results.drukken.reduce((sum, d) => sum + d.oplage, 0);
+  const totaalExemplaren = results.totaal_oplage ?? results.drukken.reduce((sum, d) => sum + d.oplage, 0);
+  const margeTotaal = results.gewogen_marge_pct_totaal ?? druk.gewogen_marge_pct;
 
   return (
     <div className="space-y-4">
-      <HeadlineStats marge={druk.gewogen_marge_pct} totaalExemplaren={totaalExemplaren} />
+      <HeadlineStats marge={margeTotaal} totaalExemplaren={totaalExemplaren} />
       <KanaalCards druk={druk} verdeling={verdeling} />
 
       {/* Oplage simulatie */}

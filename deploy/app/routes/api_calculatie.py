@@ -126,6 +126,7 @@ def druk_to_dict(d: DrukResultaat, verd_ws: float, verd_rt: float, verd_b2b: flo
         "retail": rt,
         "b2b": b2b,
         "gewogen_netto_winst": gewogen_winst,
+        "gewogen_netto_omzet": gewogen_omzet,
         "gewogen_marge_pct": gewogen_marge,
     }
 
@@ -140,16 +141,26 @@ def run_calculation(data: dict) -> dict:
 
     res = bereken_titel(t)
 
+    drukken_out = [
+        {
+            **druk_to_dict(d, verd_ws, verd_rt, verd_b2b),
+            "kosten_totaal": d.kosten_totaal,
+            "drukkosten_totaal": d.drukkosten_totaal,
+        }
+        for d in res.drukken
+    ]
+
+    # Gewogen marge over ALLE drukken: som euro-winst / som euro-omzet,
+    # gewogen met oplage per druk.
+    total_winst = sum(d["gewogen_netto_winst"] * d["oplage"] for d in drukken_out)
+    total_omzet = sum(d["gewogen_netto_omzet"] * d["oplage"] for d in drukken_out)
+    marge_totaal = total_winst / total_omzet if total_omzet > 0 else 0
+
     return {
         "titel": res.titel,
-        "drukken": [
-            {
-                **druk_to_dict(d, verd_ws, verd_rt, verd_b2b),
-                "kosten_totaal": d.kosten_totaal,
-                "drukkosten_totaal": d.drukkosten_totaal,
-            }
-            for d in res.drukken
-        ],
+        "drukken": drukken_out,
+        "gewogen_marge_pct_totaal": marge_totaal,
+        "totaal_oplage": sum(d["oplage"] for d in drukken_out),
     }
 
 
@@ -280,14 +291,12 @@ def list_titels():
         try:
             calc_req = {
                 "titel_input": ti,
-                "herdruk_oplages": tdata.get("herdruk_oplages", []),
                 "verdeling_webshop": tdata.get("verdeling_webshop", 0.10),
                 "verdeling_retail": tdata.get("verdeling_retail", 0.85),
                 "verdeling_b2b": tdata.get("verdeling_b2b", 0.05),
             }
             res = run_calculation(calc_req)
-            if res["drukken"]:
-                gewogen_marge = res["drukken"][0]["gewogen_marge_pct"]
+            gewogen_marge = res.get("gewogen_marge_pct_totaal")
         except Exception:
             pass
         items.append({
@@ -295,7 +304,7 @@ def list_titels():
             "titel": ti.get("titel", ""),
             "auteur": ti.get("auteur", ""),
             "isbn": ti.get("isbn", ""),
-            "druknummer": ti.get("druknummer", 1),
+            "drukken_count": len(ti.get("drukken", [])),
             "gewogen_marge_pct": gewogen_marge,
             "archived": archived,
         })

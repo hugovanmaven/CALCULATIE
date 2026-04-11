@@ -123,11 +123,14 @@ export interface DrukResultaat {
   b2b: KanaalResultaat;
   gewogen_marge_pct: number;
   gewogen_netto_winst: number;
+  gewogen_netto_omzet: number;
 }
 
 export interface CalculateResponse {
   titel: string;
   drukken: DrukResultaat[];
+  gewogen_marge_pct_totaal: number;
+  totaal_oplage: number;
 }
 
 export interface SensitivityRow {
