@@ -138,6 +138,13 @@ function KanaalCards({ druk, verdeling }: { druk: any; verdeling: { webshop: num
 }
 
 function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
+  // Break-even always first, then ascending by volume
+  const sortedRows = [...sim.rows].sort((a, b) => {
+    if (a.is_break_even && !b.is_break_even) return -1;
+    if (!a.is_break_even && b.is_break_even) return 1;
+    return a.oplage - b.oplage;
+  });
+
   return (
     <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4">
       <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">
@@ -147,47 +154,59 @@ function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
         Netto resultaat bij verschillende verkoopaantallen (incl. eenmalige kosten &amp; voorschotten)
       </p>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {sim.rows.map((row, i) => {
+        {sortedRows.map((row, i) => {
           const isBreakEven = row.is_break_even;
           const isPositive = row.netto_resultaat >= 0;
           return (
             <div
               key={i}
-              className={`text-center p-3 rounded-lg transition-colors ${
+              className={`rounded-lg overflow-hidden transition-colors ${
                 isBreakEven
-                  ? 'bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30'
-                  : 'bg-[var(--bg-primary)]'
+                  ? 'ring-1 ring-[var(--accent)]/30'
+                  : ''
               }`}
             >
-              <div className={`text-lg font-bold tabular-nums mb-0.5 ${
-                isBreakEven ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
+              {/* Colored top stripe based on margin */}
+              <div className={`h-1 w-full ${
+                isBreakEven ? 'bg-[var(--accent)]'
+                : row.marge_pct >= STREEFMARGE ? 'bg-emerald-500'
+                : row.marge_pct >= 0 ? 'bg-amber-500'
+                : 'bg-red-400'
+              }`} />
+              <div className={`text-center p-3 ${
+                isBreakEven ? 'bg-[var(--accent)]/10' : 'bg-[var(--bg-primary)]'
               }`}>
-                {row.oplage.toLocaleString('nl-NL')}
-              </div>
-              <div className="text-[10px] text-[var(--text-tertiary)] uppercase tracking-wide mb-1.5">
-                {isBreakEven ? 'break-even' : 'exemplaren'}
-              </div>
-              <div className={`text-sm font-semibold tabular-nums ${
-                isPositive ? 'text-emerald-600' : 'text-red-600'
-              }`}>
-                &euro; {fmtK(row.netto_resultaat)}
-              </div>
-              <div className={`text-xs font-medium tabular-nums ${
-                row.marge_pct >= STREEFMARGE ? 'text-emerald-600'
-                : row.marge_pct >= 0 ? 'text-amber-600'
-                : 'text-red-600'
-              }`}>
-                {row.marge_pct > -9 ? pct(row.marge_pct) : 'n.v.t.'}
+                {/* Label / kopje */}
+                <div className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${
+                  isBreakEven ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'
+                }`}>
+                  {isBreakEven ? 'Break-even' : 'Exemplaren'}
+                </div>
+                {/* Volume number */}
+                <div className={`text-xl font-bold tabular-nums mb-1.5 ${
+                  isBreakEven ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
+                }`}>
+                  {row.oplage.toLocaleString('nl-NL')}
+                </div>
+                {/* Net result */}
+                <div className={`text-sm font-semibold tabular-nums ${
+                  isPositive ? 'text-emerald-600' : 'text-red-600'
+                }`}>
+                  &euro; {fmtK(row.netto_resultaat)}
+                </div>
+                {/* Margin */}
+                <div className={`text-xs font-medium tabular-nums ${
+                  row.marge_pct >= STREEFMARGE ? 'text-emerald-600'
+                  : row.marge_pct >= 0 ? 'text-amber-600'
+                  : 'text-red-600'
+                }`}>
+                  {row.marge_pct > -9 ? pct(row.marge_pct) : 'n.v.t.'}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
-      {sim.break_even_oplage != null && (
-        <p className="text-xs text-[var(--text-tertiary)] mt-2 text-center">
-          Break-even bij <strong className="text-[var(--text-primary)]">{sim.break_even_oplage.toLocaleString('nl-NL')} exemplaren</strong>
-        </p>
-      )}
     </div>
   );
 }
@@ -196,7 +215,13 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
   const sens = cacSens[0];
   if (!sens || !sens.rows.length) return null;
 
-  const cacLevels = [0, 1, 2, 3, 5, 8];
+  // Dynamic range centered on currentCac, step size depends on magnitude
+  const step = currentCac <= 4 ? 1 : currentCac <= 10 ? 2 : 3;
+  const numTiles = 6;
+  const halfRange = Math.floor(numTiles / 2) * step;
+  const startCac = Math.max(0, Math.round((currentCac - halfRange) / step) * step);
+  const cacLevels = Array.from({ length: numTiles }, (_, i) => startCac + i * step);
+
   const keyRows = cacLevels
     .map(v => sens.rows.find(r => Math.abs(r.variable_value - v) < 0.01))
     .filter((r): r is NonNullable<typeof r> => r != null);
@@ -212,18 +237,36 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
         {keyRows.map((row, i) => {
           const isCurrent = Math.abs(row.variable_value - currentCac) < 0.01;
+          const marge = row.webshop_marge_pct;
+          const stripeColor = marge >= STREEFMARGE ? 'bg-emerald-500'
+            : marge >= 0.20 ? 'bg-amber-500'
+            : 'bg-red-400';
           return (
-            <div key={i} className={`text-center p-2.5 rounded-lg ${
-              isCurrent ? 'bg-[var(--accent)]/10 ring-1 ring-[var(--accent)]/30' : 'bg-[var(--bg-primary)]'
+            <div key={i} className={`rounded-lg overflow-hidden ${
+              isCurrent ? 'ring-1 ring-[var(--accent)]/40' : ''
             }`}>
-              <div className={`text-lg font-bold tabular-nums mb-0.5 ${isCurrent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>
-                &euro; {fmt(row.variable_value, 0)}
+              {/* Colored top stripe — scannable at a glance */}
+              <div className={`h-1 w-full ${isCurrent ? 'bg-[var(--accent)]' : stripeColor}`} />
+              <div className={`text-center p-2.5 ${
+                isCurrent ? 'bg-[var(--accent)]/10' : 'bg-[var(--bg-primary)]'
+              }`}>
+                {/* Kopje: CAC value as label */}
+                <div className={`text-xs font-semibold tabular-nums mb-0.5 ${
+                  isCurrent ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'
+                }`}>
+                  &euro; {fmt(row.variable_value, 0)} CAC
+                </div>
+                {/* Margin — primary metric */}
+                <div className={`text-lg font-bold tabular-nums ${
+                  marge >= STREEFMARGE ? 'text-emerald-600'
+                  : marge >= 0.20 ? 'text-amber-600'
+                  : 'text-red-600'
+                }`}>{pct(marge)}</div>
+                {/* Secondary: winst per ex */}
+                <div className="text-[10px] text-[var(--text-tertiary)] tabular-nums mt-0.5">
+                  &euro; {fmt(row.webshop_winst)} /ex
+                </div>
               </div>
-              <div className="text-[10px] text-[var(--text-tertiary)] mb-1 uppercase tracking-wide">CAC</div>
-              <div className={`text-sm font-semibold tabular-nums ${
-                row.webshop_marge_pct >= STREEFMARGE ? 'text-emerald-600' : row.webshop_marge_pct >= 0.20 ? 'text-amber-600' : 'text-red-600'
-              }`}>{pct(row.webshop_marge_pct)}</div>
-              <div className="text-[10px] text-[var(--text-tertiary)] tabular-nums">&euro; {fmt(row.webshop_winst)} /ex</div>
             </div>
           );
         })}
