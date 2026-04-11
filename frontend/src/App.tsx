@@ -3,7 +3,7 @@ import DatabaseView from './components/views/DatabaseView';
 import DetailView from './components/views/DetailView';
 import { useTitelList } from './hooks/useTitelList';
 import { saveTitel, deleteTitel, importCsv } from './api/client';
-import { DEFAULT_TITEL_INPUT, DEFAULT_KOSTENPOSTEN } from './api/types';
+import { DEFAULT_TITEL_INPUT } from './api/types';
 
 type View = { kind: 'database' } | { kind: 'detail'; titelId: string };
 
@@ -17,8 +17,7 @@ export default function App() {
 
   const handleNewTitel = useCallback(async () => {
     const saved = await saveTitel({
-      titel_input: { ...DEFAULT_TITEL_INPUT, kostenposten: [...DEFAULT_KOSTENPOSTEN] },
-      herdruk_oplages: [],
+      titel_input: { ...DEFAULT_TITEL_INPUT },
       verdeling_webshop: 0.10,
       verdeling_retail: 0.90,
       verdeling_b2b: 0.00,

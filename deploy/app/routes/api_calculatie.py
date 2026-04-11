@@ -9,8 +9,8 @@ from dataclasses import asdict
 from flask import Blueprint, request, jsonify, Response, abort
 
 from ..calculatie import (
-    TitelInput, StaffelTrede, KostenPost,
-    bereken_titel, bereken_kanaal, bereken_kostenposten_totalen,
+    TitelInput, StaffelTrede, KostenPost, DrukConfig,
+    bereken_titel,
     KanaalResultaat, DrukResultaat, CalculatieResultaat,
 )
 from .. import storage_calculatie as storage
@@ -30,49 +30,37 @@ def _kostenposten_list(items: list[dict]) -> list[KostenPost]:
     return [
         KostenPost(
             id=kp["id"], naam=kp["naam"],
-            categorie=kp["categorie"], type=kp["type"],
+            categorie=kp["categorie"],
             bedrag=kp.get("bedrag", 0.0),
         )
         for kp in items
     ]
 
 
+def _drukken_list(items: list[dict]) -> list[DrukConfig]:
+    result = []
+    for i, d in enumerate(items):
+        result.append(DrukConfig(
+            druknummer=d.get("druknummer", i + 1),
+            oplage=d.get("oplage", 2000),
+            drukkosten_per_ex=d.get("drukkosten_per_ex", 1.20),
+            kostenposten=_kostenposten_list(d.get("kostenposten", [])),
+        ))
+    return result
+
+
 def dict_to_titel_input(d: dict) -> TitelInput:
     """Converteer JSON dict → TitelInput dataclass."""
     return TitelInput(
         titel=d.get("titel", "Nieuwe titel"),
+        auteur=d.get("auteur", ""),
         isbn=d.get("isbn", ""),
-        druknummer=d.get("druknummer", 1),
         verschijningsdatum=d.get("verschijningsdatum", ""),
         verschenen=d.get("verschenen", False),
         verkoopprijs_incl_btw=d.get("verkoopprijs_incl_btw", 20.0),
         btw_percentage=d.get("btw_percentage", 0.09),
         boekhandelskorting=d.get("boekhandelskorting", 0.48),
-        oplage_1e_druk=d.get("oplage_1e_druk", 2000),
-        drukkosten_1e_druk=d.get("drukkosten_1e_druk", 0.0),
-        drukkosten_herdruk=d.get("drukkosten_herdruk", 0.0),
-        # Productie
-        vormgeving_omslag=d.get("vormgeving_omslag", 0.0),
-        vormgeving_binnenwerk=d.get("vormgeving_binnenwerk", 0.0),
-        dtp=d.get("dtp", 0.0),
-        persklaarmaken=d.get("persklaarmaken", 0.0),
-        correctie=d.get("correctie", 0.0),
-        freelance_redactie=d.get("freelance_redactie", 0.0),
-        ebook_productie=d.get("ebook_productie", 0.0),
-        audiobook_productie=d.get("audiobook_productie", 0.0),
-        overige_productie=d.get("overige_productie", 0.0),
-        # Offline marketing
-        evenement=d.get("evenement", 0.0),
-        marketingmateriaal=d.get("marketingmateriaal", 0.0),
-        offline_campagne=d.get("offline_campagne", 0.0),
-        boekhandelsmateriaal=d.get("boekhandelsmateriaal", 0.0),
-        marketing_fee=d.get("marketing_fee", 0.0),
-        overige_offline_marketing=d.get("overige_offline_marketing", 0.0),
-        # Online marketing
-        online_ads=d.get("online_ads", 0.0),
-        productfotografie=d.get("productfotografie", 0.0),
-        productie_ads=d.get("productie_ads", 0.0),
-        software_kosten=d.get("software_kosten", 0.0),
+        drukken=_drukken_list(d.get("drukken", [])),
         # Webshop
         transactiekosten_pct=d.get("transactiekosten_pct", 0.02),
         fulfillment_per_ex=d.get("fulfillment_per_ex", 4.50),
@@ -105,9 +93,6 @@ def dict_to_titel_input(d: dict) -> TitelInput:
         partner_winstdeling_pct=d.get("partner_winstdeling_pct", 0.5),
         # Overig
         overige_kosten_pct=d.get("overige_kosten_pct", 0.0),
-        # Kostenposten v2
-        kostenposten=_kostenposten_list(d.get("kostenposten", [])),
-        gebruik_kostenposten=d.get("gebruik_kostenposten", False),
     )
 
 
@@ -141,6 +126,7 @@ def druk_to_dict(d: DrukResultaat, verd_ws: float, verd_rt: float, verd_b2b: flo
         "retail": rt,
         "b2b": b2b,
         "gewogen_netto_winst": gewogen_winst,
+        "gewogen_netto_omzet": gewogen_omzet,
         "gewogen_marge_pct": gewogen_marge,
     }
 
@@ -153,80 +139,28 @@ def run_calculation(data: dict) -> dict:
     verd_rt = data.get("verdeling_retail", 0.85)
     verd_b2b = data.get("verdeling_b2b", 0.05)
 
-    # ── Multi-druk pad: elke druk heeft eigen kostenposten ──
-    drukken_config = ti.get("drukken", [])
-    if drukken_config:
-        res = CalculatieResultaat(titel=t.titel)
-        cumulatief = 0
-        totaal_productie = 0.0
-        totaal_offline = 0.0
-        totaal_online = 0.0
+    res = bereken_titel(t)
 
-        for i, druk_cfg in enumerate(drukken_config):
-            druknr = druk_cfg.get("druknummer", i + 1)
-            oplage = druk_cfg.get("oplage", 2000)
-            drukkosten_per_ex = druk_cfg.get("drukkosten_per_ex", 1.20)
-            kp_list = _kostenposten_list(druk_cfg.get("kostenposten", []))
-            is_first = (i == 0)
+    drukken_out = [
+        {
+            **druk_to_dict(d, verd_ws, verd_rt, verd_b2b),
+            "kosten_totaal": d.kosten_totaal,
+            "drukkosten_totaal": d.drukkosten_totaal,
+        }
+        for d in res.drukken
+    ]
 
-            # Override drukkosten in TitelInput for this druk
-            t.drukkosten_1e_druk = drukkosten_per_ex
-            t.drukkosten_herdruk = drukkosten_per_ex
-            t.oplage_1e_druk = oplage
-
-            # Calculate kostenposten for this druk
-            if kp_list:
-                t.gebruik_kostenposten = True
-                t.kostenposten = kp_list
-                totaal_eenmalig, totaal_terugkerend = bereken_kostenposten_totalen(kp_list)
-                eenmalig_per_ex = totaal_eenmalig / oplage if oplage > 0 else 0
-                terugkerend_per_ex = totaal_terugkerend / oplage if oplage > 0 else 0
-
-                totaal_productie += sum(kp.bedrag for kp in kp_list if kp.categorie == "productie")
-                totaal_offline += sum(kp.bedrag for kp in kp_list if kp.categorie == "offline_marketing")
-                totaal_online += sum(kp.bedrag for kp in kp_list if kp.categorie == "online_marketing")
-            else:
-                eenmalig_per_ex = 0
-                terugkerend_per_ex = 0
-
-            druk = DrukResultaat(
-                druk_type=f"{druknr}e druk",
-                oplage=oplage,
-                cumulatief_voor_druk=cumulatief,
-            )
-            for kanaal in ["webshop", "retail", "b2b"]:
-                result = bereken_kanaal(
-                    t, kanaal, is_herdruk=(not is_first),
-                    productie_per_ex=0.0, offline_mkt_per_ex=0.0, online_mkt_per_ex=0.0,
-                    cumulatief_verkocht=cumulatief, oplage=oplage,
-                    eenmalig_per_ex=eenmalig_per_ex,
-                    terugkerend_per_ex=terugkerend_per_ex,
-                )
-                setattr(druk, kanaal, result)
-            res.drukken.append(druk)
-            cumulatief += oplage
-
-            if is_first:
-                res.drukkosten_totaal_1e = drukkosten_per_ex * oplage
-
-        res.totaal_productie = totaal_productie
-        res.totaal_offline_marketing = totaal_offline
-        res.totaal_online_marketing = totaal_online
-    else:
-        # Legacy: fallback to old engine path
-        herdrukken = data.get("herdruk_oplages") or None
-        res = bereken_titel(t, herdruk_oplages=herdrukken)
+    # Gewogen marge over ALLE drukken: som euro-winst / som euro-omzet,
+    # gewogen met oplage per druk.
+    total_winst = sum(d["gewogen_netto_winst"] * d["oplage"] for d in drukken_out)
+    total_omzet = sum(d["gewogen_netto_omzet"] * d["oplage"] for d in drukken_out)
+    marge_totaal = total_winst / total_omzet if total_omzet > 0 else 0
 
     return {
         "titel": res.titel,
-        "drukken": [
-            druk_to_dict(d, verd_ws, verd_rt, verd_b2b)
-            for d in res.drukken
-        ],
-        "totaal_productie": res.totaal_productie,
-        "totaal_offline_marketing": res.totaal_offline_marketing,
-        "totaal_online_marketing": res.totaal_online_marketing,
-        "drukkosten_totaal_1e": res.drukkosten_totaal_1e,
+        "drukken": drukken_out,
+        "gewogen_marge_pct_totaal": marge_totaal,
+        "totaal_oplage": sum(d["oplage"] for d in drukken_out),
     }
 
 
@@ -357,14 +291,12 @@ def list_titels():
         try:
             calc_req = {
                 "titel_input": ti,
-                "herdruk_oplages": tdata.get("herdruk_oplages", []),
                 "verdeling_webshop": tdata.get("verdeling_webshop", 0.10),
                 "verdeling_retail": tdata.get("verdeling_retail", 0.85),
                 "verdeling_b2b": tdata.get("verdeling_b2b", 0.05),
             }
             res = run_calculation(calc_req)
-            if res["drukken"]:
-                gewogen_marge = res["drukken"][0]["gewogen_marge_pct"]
+            gewogen_marge = res.get("gewogen_marge_pct_totaal")
         except Exception:
             pass
         items.append({
@@ -372,7 +304,7 @@ def list_titels():
             "titel": ti.get("titel", ""),
             "auteur": ti.get("auteur", ""),
             "isbn": ti.get("isbn", ""),
-            "druknummer": ti.get("druknummer", 1),
+            "drukken_count": len(ti.get("drukken", [])),
             "gewogen_marge_pct": gewogen_marge,
             "archived": archived,
         })
@@ -447,49 +379,41 @@ def seed_database():
                 "titel": t["titel"],
                 "auteur": t["auteur"],
                 "isbn": t["isbn"],
-                "druknummer": t["druknummer"],
                 "verschijningsdatum": "",
                 "verschenen": t["druknummer"] > 0,
                 "verkoopprijs_incl_btw": 20.0,
                 "btw_percentage": 0.09,
                 "boekhandelskorting": 0.48,
-                "oplage_1e_druk": 2000,
-                "drukkosten_1e_druk": 1.20,
-                "drukkosten_herdruk": 1.20,
+                "drukken": [{
+                    "druknummer": t["druknummer"],
+                    "oplage": 2000,
+                    "drukkosten_per_ex": 1.20,
+                    "kostenposten": [],
+                }],
+                "transactiekosten_pct": 0.02,
+                "fulfillment_per_ex": 4.50,
+                "cac_per_ex": 0.0,
+                "distributie_cb_per_ex": 1.10,
+                "b2b_porto_per_ex": 0.0,
+                "b2b_korting_pct": 0.0,
                 "auteur_winstdeling_pct": 0.50,
-                "gebruik_kostenposten": True,
-                "kostenposten": [],
-                "extra_derden": [],
-                "overige_kosten_items": [],
+                "auteur_royalty_staffel": [],
+                "auteur_voorschot": 0,
+                "agent_pct": 0.0, "agent_staffel": [], "agent_winstdeling_pct": 0.0, "agent_voorschot": 0,
+                "vertaler_pct": 0.0, "vertaler_staffel": [], "vertaler_winstdeling_pct": 0.0, "vertaler_voorschot": 0,
+                "illustrator_pct": 0.0, "illustrator_staffel": [], "illustrator_winstdeling_pct": 0.0, "illustrator_voorschot": 0,
+                "heeft_partner": False,
+                "partner_naam": "",
+                "partner_winstdeling_pct": 0.5,
                 "overige_kosten_pct": 0.0,
+                "overige_kosten_items": [],
+                "extra_derden": [],
             },
-            "herdruk_oplages": [],
             "verdeling_webshop": 0.10,
             "verdeling_retail": 0.85,
             "verdeling_b2b": 0.05,
             "archived": False,
         }
-        # Zet alle overige numerieke velden op 0
-        for field in [
-            "vormgeving_omslag", "vormgeving_binnenwerk", "dtp", "persklaarmaken",
-            "correctie", "freelance_redactie", "ebook_productie", "audiobook_productie",
-            "overige_productie", "evenement", "marketingmateriaal", "offline_campagne",
-            "boekhandelsmateriaal", "marketing_fee", "overige_offline_marketing",
-            "online_ads", "productfotografie", "productie_ads", "software_kosten",
-            "transactiekosten_pct", "cac_per_ex", "b2b_porto_per_ex", "b2b_korting_pct",
-            "agent_pct", "vertaler_pct", "illustrator_pct",
-        ]:
-            titel_data["titel_input"][field] = 0.0
-        titel_data["titel_input"]["fulfillment_per_ex"] = 4.50
-        titel_data["titel_input"]["distributie_cb_per_ex"] = 1.10
-        titel_data["titel_input"]["transactiekosten_pct"] = 0.02
-        titel_data["titel_input"]["auteur_royalty_staffel"] = []
-        titel_data["titel_input"]["agent_staffel"] = []
-        titel_data["titel_input"]["vertaler_staffel"] = []
-        titel_data["titel_input"]["illustrator_staffel"] = []
-        titel_data["titel_input"]["heeft_partner"] = False
-        titel_data["titel_input"]["partner_naam"] = ""
-
         storage.save_titel(tid, titel_data)
         count += 1
 
@@ -501,7 +425,8 @@ def seed_database():
 @bp.route("/api/simulate/oplage", methods=["POST"])
 def simulate_oplage():
     """Simuleer P&L bij verschillende verkoopaantallen.
-    Berekent netto resultaat incl. eenmalige kosten en voorschotten.
+
+    Berekent netto resultaat incl. kostenposten van 1e druk en voorschotten.
     Geeft 4 punten: huidige oplage, break-even, +5000, +10000.
     """
     data = request.get_json()
@@ -510,7 +435,6 @@ def simulate_oplage():
     verd_rt = data.get("verdeling_retail", 0.85)
     verd_b2b = data.get("verdeling_b2b", 0.05)
 
-    # Get per-ex results from engine (for 1e druk = baseline)
     try:
         calc = run_calculation(data)
     except Exception:
@@ -526,23 +450,20 @@ def simulate_oplage():
     netto_omzet_per_ex = ws["netto_omzet"] * verd_ws + rt["netto_omzet"] * verd_rt + b2b_k["netto_omzet"] * verd_b2b
     netto_winst_per_ex = ws["netto_winst_maven"] * verd_ws + rt["netto_winst_maven"] * verd_rt + b2b_k["netto_winst_maven"] * verd_b2b
 
-    # The engine already amortizes eenmalige kosten into the per-ex result.
-    # For the oplage sim, we want the result WITHOUT amortized eenmalige kosten,
-    # then add them back as a fixed lump sum.
-    eenmalige_per_ex = (
-        ws["productie_per_ex"] * verd_ws + rt["productie_per_ex"] * verd_rt + b2b_k["productie_per_ex"] * verd_b2b
-        + ws["offline_marketing_per_ex"] * verd_ws + rt["offline_marketing_per_ex"] * verd_rt + b2b_k["offline_marketing_per_ex"] * verd_b2b
+    # The engine amortizes kostenposten into the per-ex result (kosten_per_ex).
+    # For the oplage sim, strip that out and add them back as a fixed lump sum,
+    # so the sim can model volumes different from the druk oplage.
+    kosten_per_ex_gewogen = (
+        ws["kosten_per_ex"] * verd_ws + rt["kosten_per_ex"] * verd_rt + b2b_k["kosten_per_ex"] * verd_b2b
     )
-    # Variable winst per ex (without eenmalige kosten amortized)
-    var_winst_per_ex = netto_winst_per_ex + eenmalige_per_ex
+    var_winst_per_ex = netto_winst_per_ex + kosten_per_ex_gewogen
 
-    # Fixed costs (eenmalige)
-    totaal_eenmalig = calc.get("totaal_productie", 0) + calc.get("totaal_offline_marketing", 0)
+    # Fixed costs: kostenposten van de 1e druk
+    totaal_eenmalig = druk.get("kosten_totaal", 0)
 
-    # Drukkosten for 1e druk (already in the per-ex figure, but we need total)
     drukken_config = ti.get("drukken", [])
     if not drukken_config:
-        drukken_config = [{"druknummer": 1, "oplage": ti.get("oplage_1e_druk", 2000), "drukkosten_per_ex": ti.get("drukkosten_1e_druk", 1.20)}]
+        drukken_config = [{"druknummer": 1, "oplage": 2000, "drukkosten_per_ex": 1.20}]
 
     # Total drukkosten as fixed investment
     totaal_drukkosten = sum(d.get("oplage", 0) * d.get("drukkosten_per_ex", 0) for d in drukken_config)
@@ -754,42 +675,36 @@ def import_csv_file():
                 "titel": titel,
                 "auteur": auteur,
                 "isbn": isbn,
-                "druknummer": druknummer,
                 "verschijningsdatum": row.get("verschijningsdatum", ""),
                 "verschenen": druknummer >= 1,
                 "verkoopprijs_incl_btw": parse_float("verkoopprijs_incl_btw", 20.0),
                 "btw_percentage": parse_float("btw_percentage", 0.09),
                 "boekhandelskorting": parse_float("boekhandelskorting", 0.48),
-                "oplage_1e_druk": int(parse_float("oplage_1e_druk", 2000)),
-                "drukkosten_1e_druk": parse_float("drukkosten_1e_druk", 1.20),
-                "drukkosten_herdruk": parse_float("drukkosten_herdruk", 1.20),
-                "auteur_winstdeling_pct": parse_float("auteur_winstdeling_pct", 0.50),
-                "gebruik_kostenposten": True,
-                "kostenposten": [],
-                "extra_derden": [],
-                "overige_kosten_items": [],
-                "overige_kosten_pct": 0.0,
-                # Default zero fields
-                "vormgeving_omslag": 0.0, "vormgeving_binnenwerk": 0.0,
-                "dtp": 0.0, "persklaarmaken": 0.0, "correctie": 0.0,
-                "freelance_redactie": 0.0, "ebook_productie": 0.0,
-                "audiobook_productie": 0.0, "overige_productie": 0.0,
-                "evenement": 0.0, "marketingmateriaal": 0.0,
-                "offline_campagne": 0.0, "boekhandelsmateriaal": 0.0,
-                "marketing_fee": 0.0, "overige_offline_marketing": 0.0,
-                "online_ads": 0.0, "productfotografie": 0.0,
-                "productie_ads": 0.0, "software_kosten": 0.0,
+                "drukken": [{
+                    "druknummer": druknummer,
+                    "oplage": int(parse_float("oplage_1e_druk", 2000)),
+                    "drukkosten_per_ex": parse_float("drukkosten_1e_druk", 1.20),
+                    "kostenposten": [],
+                }],
                 "transactiekosten_pct": 0.02,
                 "fulfillment_per_ex": 4.50,
                 "cac_per_ex": 0.0,
                 "distributie_cb_per_ex": 1.10,
-                "b2b_porto_per_ex": 0.0, "b2b_korting_pct": 0.0,
-                "agent_pct": 0.0, "vertaler_pct": 0.0, "illustrator_pct": 0.0,
+                "b2b_porto_per_ex": 0.0,
+                "b2b_korting_pct": 0.0,
+                "auteur_winstdeling_pct": parse_float("auteur_winstdeling_pct", 0.50),
                 "auteur_royalty_staffel": [],
-                "agent_staffel": [], "vertaler_staffel": [], "illustrator_staffel": [],
-                "heeft_partner": False, "partner_naam": "",
+                "auteur_voorschot": 0,
+                "agent_pct": 0.0, "agent_staffel": [], "agent_winstdeling_pct": 0.0, "agent_voorschot": 0,
+                "vertaler_pct": 0.0, "vertaler_staffel": [], "vertaler_winstdeling_pct": 0.0, "vertaler_voorschot": 0,
+                "illustrator_pct": 0.0, "illustrator_staffel": [], "illustrator_winstdeling_pct": 0.0, "illustrator_voorschot": 0,
+                "heeft_partner": False,
+                "partner_naam": "",
+                "partner_winstdeling_pct": 0.5,
+                "overige_kosten_pct": 0.0,
+                "overige_kosten_items": [],
+                "extra_derden": [],
             },
-            "herdruk_oplages": [],
             "verdeling_webshop": 0.10,
             "verdeling_retail": 0.85,
             "verdeling_b2b": 0.05,
@@ -814,15 +729,10 @@ def export_csv():
     writer.writerow(["Maven Calculatie", res["titel"]])
     writer.writerow([])
 
-    writer.writerow(["EENMALIGE KOSTEN"])
-    writer.writerow(["Productie", f"{res['totaal_productie']:.2f}"])
-    writer.writerow(["Offline marketing", f"{res['totaal_offline_marketing']:.2f}"])
-    writer.writerow(["Online marketing", f"{res['totaal_online_marketing']:.2f}"])
-    writer.writerow(["Drukkosten 1e druk", f"{res['drukkosten_totaal_1e']:.2f}"])
-    writer.writerow([])
-
     for druk in res["drukken"]:
         writer.writerow([druk["druk_type"].upper(), f"Oplage: {druk['oplage']}"])
+        writer.writerow(["Kostenposten totaal", f"{druk.get('kosten_totaal', 0):.2f}"])
+        writer.writerow(["Drukkosten totaal", f"{druk.get('drukkosten_totaal', 0):.2f}"])
         writer.writerow(["", "Webshop", "", "Retail (CB)", "", "B2B", ""])
         writer.writerow(["", "Bedrag", "Marge%", "Bedrag", "Marge%", "Bedrag", "Marge%"])
 

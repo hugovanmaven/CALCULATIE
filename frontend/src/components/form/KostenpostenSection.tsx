@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { TitelInput, KostenPost, DrukConfig } from '../../api/types';
 import { DEFAULT_KOSTENPOSTEN } from '../../api/types';
-import { NumberInput } from './NumberInput';
+import { Plus } from 'lucide-react';
 
 interface Props {
   titelInput: TitelInput;
@@ -17,110 +17,139 @@ function generateId(): string {
 const CATEGORIE_CONFIG: {
   key: KostenPost['categorie'];
   label: string;
-  color: string;
 }[] = [
-  { key: 'productie', label: 'Productie', color: 'bg-blue-50 border-blue-200' },
-  { key: 'offline_marketing', label: 'Offline marketing', color: 'bg-amber-50 border-amber-200' },
-  { key: 'online_marketing', label: 'Online marketing', color: 'bg-green-50 border-green-200' },
+  { key: 'productie', label: 'Productie' },
+  { key: 'offline_marketing', label: 'Offline marketing' },
+  { key: 'online_marketing', label: 'Online marketing' },
 ];
 
-/* ───── sub-components ───── */
+function formatEuro(n: number): string {
+  return n.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
 
-function KostenPostRij({
-  kp,
+/* ───── Kosten row (2-row: label above, input below) ───── */
+
+function KostenRij({
+  label,
+  bedrag,
   onBedragChange,
-  onTypeChange,
-  onRemove,
   isCustom,
+  onRemove,
+  step = 10,
+  suffix,
 }: {
-  kp: KostenPost;
+  label: string;
+  bedrag: number;
   onBedragChange: (bedrag: number) => void;
-  onTypeChange: (type: 'eenmalig' | 'terugkerend') => void;
+  isCustom?: boolean;
   onRemove?: () => void;
-  isCustom: boolean;
+  step?: number;
+  suffix?: string;
 }) {
+  const isEmpty = !bedrag;
   return (
-    <div className="flex items-center gap-2 py-1.5 group">
-      <span className="text-sm text-[var(--text-secondary)] flex-1 min-w-0">{kp.naam}</span>
-
-      <select
-        value={kp.type}
-        onChange={e => onTypeChange(e.target.value as 'eenmalig' | 'terugkerend')}
-        className="text-xs border border-[var(--border)] rounded px-1.5 py-1 bg-[var(--bg-secondary)] text-[var(--text-tertiary)] outline-none shrink-0"
-      >
-        <option value="eenmalig">Eenmalig</option>
-        <option value="terugkerend">Terugkerend</option>
-      </select>
-
-      <div className="flex items-center shrink-0">
-        <span className="inline-flex items-center px-1.5 py-1 text-xs text-[var(--text-tertiary)] bg-[var(--bg-hover)] border border-r-0 border-[var(--border)] rounded-l">
+    <div
+      className={`py-1.5 transition-opacity ${
+        isEmpty ? 'opacity-45 hover:opacity-100 focus-within:opacity-100' : ''
+      }`}
+    >
+      <div className="flex items-center justify-between mb-0.5 gap-2">
+        <span className="text-xs text-[var(--text-secondary)] leading-tight break-words min-w-0">
+          {label}
+        </span>
+        {isCustom && onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors shrink-0 w-4 text-center leading-none text-sm"
+            title="Verwijderen"
+          >
+            &times;
+          </button>
+        )}
+      </div>
+      <div className="flex items-center">
+        <span className="inline-flex items-center px-2 py-1 text-xs text-[var(--text-tertiary)] bg-[var(--bg-secondary)] border border-r-0 border-[var(--border)] rounded-l-lg">
           &euro;
         </span>
         <input
           type="number"
-          value={kp.bedrag || ''}
+          value={bedrag || ''}
           onChange={e => onBedragChange(parseFloat(e.target.value) || 0)}
-          step={10}
+          step={step}
           min={0}
-          className="w-20 px-2 py-1 text-sm border border-[var(--border)] rounded-r outline-none text-right bg-[var(--bg-secondary)]"
+          className={`w-full min-w-0 px-2 py-1 text-sm border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-primary)] text-right tabular-nums focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none ${
+            suffix ? '' : 'rounded-r-lg'
+          }`}
           placeholder="0"
         />
+        {suffix && (
+          <span className="inline-flex items-center px-2 py-1 text-xs text-[var(--text-tertiary)] bg-[var(--bg-secondary)] border border-l-0 border-[var(--border)] rounded-r-lg whitespace-nowrap">
+            {suffix}
+          </span>
+        )}
       </div>
-
-      {isCustom && onRemove ? (
-        <button
-          onClick={onRemove}
-          className="text-[var(--text-tertiary)] hover:text-red-500 transition-colors shrink-0 w-5 text-center"
-          title="Verwijderen"
-        >
-          &times;
-        </button>
-      ) : (
-        <span className="w-5 shrink-0" />
-      )}
     </div>
   );
 }
 
+/* ───── Categorie group ───── */
+
 function CategorieGroep({
   label,
-  color,
   items,
+  subtotal,
   onBedragChange,
-  onTypeChange,
   onRemove,
+  onAddClick,
+  isAdding,
+  children: leadingRow,
 }: {
   label: string;
-  color: string;
   items: KostenPost[];
+  subtotal: number;
   onBedragChange: (id: string, bedrag: number) => void;
-  onTypeChange: (id: string, type: 'eenmalig' | 'terugkerend') => void;
   onRemove: (id: string) => void;
+  onAddClick: () => void;
+  isAdding: boolean;
+  children?: React.ReactNode;
 }) {
-  const subtotal = items.reduce((sum, kp) => sum + kp.bedrag, 0);
-  if (items.length === 0) return null;
-
   return (
-    <div className={`rounded-lg border p-3 ${color}`}>
-      <h4 className="text-xs font-bold text-[var(--text-tertiary)] uppercase tracking-wide mb-1">{label}</h4>
-      <div className="divide-y divide-gray-200/50">
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <h4 className="text-xs font-semibold text-[var(--text-secondary)] uppercase tracking-wide">
+          {label}
+        </h4>
+        <span className="text-xs text-[var(--text-tertiary)] tabular-nums">
+          &euro; {formatEuro(subtotal)}
+        </span>
+      </div>
+
+      {leadingRow}
+
+      <div className="grid grid-cols-2 gap-x-3">
         {items.map(kp => (
-          <KostenPostRij
+          <KostenRij
             key={kp.id}
-            kp={kp}
-            onBedragChange={bedrag => onBedragChange(kp.id, bedrag)}
-            onTypeChange={type => onTypeChange(kp.id, type)}
-            onRemove={kp.id.startsWith('custom_') ? () => onRemove(kp.id) : undefined}
+            label={kp.naam}
+            bedrag={kp.bedrag}
+            onBedragChange={b => onBedragChange(kp.id, b)}
             isCustom={kp.id.startsWith('custom_')}
+            onRemove={() => onRemove(kp.id)}
           />
         ))}
       </div>
-      <div className="flex justify-between items-center border-t border-gray-300/40 pt-2 mt-2">
-        <span className="text-xs font-semibold text-[var(--text-tertiary)] uppercase">Subtotaal</span>
-        <span className="text-sm font-semibold text-[var(--text-primary)] font-mono">
-          &euro; {subtotal.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-        </span>
-      </div>
+
+      {!isAdding && (
+        <button
+          type="button"
+          onClick={onAddClick}
+          className="flex items-center gap-1.5 text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium mt-1 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Kostenpost toevoegen
+        </button>
+      )}
     </div>
   );
 }
@@ -136,9 +165,8 @@ function DrukKostenBlock({
   onDrukChange: (updated: DrukConfig) => void;
   isFirst: boolean;
 }) {
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [addingTo, setAddingTo] = useState<KostenPost['categorie'] | null>(null);
   const [newNaam, setNewNaam] = useState('');
-  const [newCategorie, setNewCategorie] = useState<KostenPost['categorie']>('productie');
 
   const kostenposten = druk.kostenposten ?? [...DEFAULT_KOSTENPOSTEN];
 
@@ -150,127 +178,123 @@ function DrukKostenBlock({
     updateKostenposten(kostenposten.map(kp => (kp.id === id ? { ...kp, bedrag } : kp)));
   };
 
-  const handleTypeChange = (id: string, type: 'eenmalig' | 'terugkerend') => {
-    updateKostenposten(kostenposten.map(kp => (kp.id === id ? { ...kp, type } : kp)));
-  };
-
   const handleRemove = (id: string) => {
     updateKostenposten(kostenposten.filter(kp => kp.id !== id));
   };
 
   const handleAddCustom = () => {
-    if (!newNaam.trim()) return;
-    updateKostenposten([...kostenposten, {
-      id: generateId(),
-      naam: newNaam.trim(),
-      categorie: newCategorie,
-      type: 'eenmalig',
-      bedrag: 0,
-    }]);
+    if (!newNaam.trim() || !addingTo) return;
+    updateKostenposten([
+      ...kostenposten,
+      {
+        id: generateId(),
+        naam: newNaam.trim(),
+        categorie: addingTo,
+        bedrag: 0,
+      },
+    ]);
     setNewNaam('');
-    setShowAddForm(false);
+    setAddingTo(null);
   };
 
-  const totaalEenmalig = kostenposten.filter(kp => kp.type === 'eenmalig').reduce((s, kp) => s + kp.bedrag, 0);
-  const totaalTerugkerend = kostenposten.filter(kp => kp.type === 'terugkerend').reduce((s, kp) => s + kp.bedrag, 0);
+  const cancelAdd = () => {
+    setNewNaam('');
+    setAddingTo(null);
+  };
+
+  const kostenTotaal = kostenposten.reduce((s, kp) => s + kp.bedrag, 0);
+  const drukkostenTotaal = druk.drukkosten_per_ex * druk.oplage;
+  const totaal = kostenTotaal + drukkostenTotaal;
 
   return (
-    <div className={`space-y-3 p-3 rounded-xl border ${isFirst ? 'bg-[var(--accent-light)] border-[var(--accent)]/20' : 'bg-[var(--bg-primary)] border-[var(--border)]'}`}>
-      <div className="flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-          {druk.druknummer}e druk — {druk.oplage.toLocaleString('nl-NL')} ex
-        </h4>
-      </div>
+    <div
+      className={`space-y-3 p-4 rounded-xl border ${
+        isFirst
+          ? 'bg-[var(--accent-light)] border-[var(--accent)]/20'
+          : 'bg-[var(--bg-primary)] border-[var(--border)]'
+      }`}
+    >
+      <h4 className="text-sm font-semibold text-[var(--text-primary)]">
+        {druk.druknummer}e druk — {druk.oplage.toLocaleString('nl-NL')} ex
+      </h4>
 
-      {/* Drukkosten per ex */}
-      <NumberInput
-        label="Drukkosten per exemplaar"
-        value={druk.drukkosten_per_ex}
-        onChange={v => onDrukChange({ ...druk, drukkosten_per_ex: v })}
-        prefix="&euro;"
-        step={0.1}
-        help="Kosten per gedrukt exemplaar"
-      />
+      {CATEGORIE_CONFIG.map((cat, idx) => {
+        const items = kostenposten.filter(kp => kp.categorie === cat.key);
+        const subtotal = items.reduce((sum, kp) => sum + kp.bedrag, 0);
 
-      {/* Categorie groepen */}
-      {CATEGORIE_CONFIG.map(cat => (
-        <CategorieGroep
-          key={cat.key}
-          label={cat.label}
-          color={cat.color}
-          items={kostenposten.filter(kp => kp.categorie === cat.key)}
-          onBedragChange={handleBedragChange}
-          onTypeChange={handleTypeChange}
-          onRemove={handleRemove}
-        />
-      ))}
+        // Drukkosten-rij wordt vooraan in de productie-categorie getoond
+        const leadingRow =
+          cat.key === 'productie' ? (
+            <div className="grid grid-cols-2 gap-x-3">
+              <KostenRij
+                label="Drukkosten per exemplaar"
+                bedrag={druk.drukkosten_per_ex}
+                onBedragChange={v => onDrukChange({ ...druk, drukkosten_per_ex: v })}
+                step={0.1}
+                suffix="/ex"
+              />
+            </div>
+          ) : null;
 
-      {/* Add custom */}
-      {!showAddForm ? (
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] font-medium flex items-center gap-1 transition-colors"
-        >
-          <span className="text-base leading-none">+</span> Kostenpost toevoegen
-        </button>
-      ) : (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-2 p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
-          <div className="flex-1">
-            <label className="block text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">Naam</label>
-            <input
-              type="text"
-              value={newNaam}
-              onChange={e => setNewNaam(e.target.value)}
-              placeholder="bijv. Vertaalkosten"
-              className="w-full px-3 py-1.5 text-sm border border-[var(--border)] rounded outline-none bg-[var(--bg-primary)]"
-              onKeyDown={e => e.key === 'Enter' && handleAddCustom()}
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-1">Categorie</label>
-            <select
-              value={newCategorie}
-              onChange={e => setNewCategorie(e.target.value as KostenPost['categorie'])}
-              className="w-full px-3 py-1.5 text-sm border border-[var(--border)] rounded outline-none bg-[var(--bg-primary)]"
+        const displaySubtotal =
+          cat.key === 'productie' ? subtotal + drukkostenTotaal : subtotal;
+
+        return (
+          <div key={cat.key}>
+            {idx > 0 && <div className="h-px bg-[var(--border)] my-3" />}
+            <CategorieGroep
+              label={cat.label}
+              items={items}
+              subtotal={displaySubtotal}
+              onBedragChange={handleBedragChange}
+              onRemove={handleRemove}
+              onAddClick={() => setAddingTo(cat.key)}
+              isAdding={addingTo === cat.key}
             >
-              <option value="productie">Productie</option>
-              <option value="offline_marketing">Offline marketing</option>
-              <option value="online_marketing">Online marketing</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={handleAddCustom}
-              disabled={!newNaam.trim()}
-              className="px-3 py-1.5 text-sm font-medium text-white bg-[var(--accent)] rounded hover:bg-[var(--accent-hover)] disabled:opacity-40 transition-colors"
-            >
-              Toevoegen
-            </button>
-            <button
-              onClick={() => { setShowAddForm(false); setNewNaam(''); }}
-              className="px-3 py-1.5 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-            >
-              Annuleren
-            </button>
-          </div>
-        </div>
-      )}
+              {leadingRow}
+            </CategorieGroep>
 
-      {/* Totals */}
-      <div className="bg-[var(--bg-secondary)] rounded-lg p-3 border border-[var(--border)]">
-        <div className="flex justify-between text-xs text-[var(--text-tertiary)] mb-1">
-          <span>Eenmalig totaal</span>
-          <span className="font-mono">&euro; {totaalEenmalig.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-        </div>
-        <div className="flex justify-between text-xs text-[var(--text-tertiary)] mb-1">
-          <span>Terugkerend totaal</span>
-          <span className="font-mono">&euro; {totaalTerugkerend.toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-        </div>
-        <div className="flex justify-between text-sm font-bold text-[var(--text-primary)] border-t border-[var(--border)] pt-1 mt-1">
-          <span>Totaal alle kosten</span>
-          <span className="font-mono">&euro; {(totaalEenmalig + totaalTerugkerend).toLocaleString('nl-NL', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-        </div>
+            {/* Inline add form */}
+            {addingTo === cat.key && (
+              <div className="flex items-center gap-2 mt-2 p-2 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
+                <input
+                  type="text"
+                  value={newNaam}
+                  onChange={e => setNewNaam(e.target.value)}
+                  placeholder="Naam kostenpost"
+                  className="flex-1 min-w-0 px-2 py-1 text-sm border border-[var(--border)] rounded-lg bg-[var(--bg-primary)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none"
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleAddCustom();
+                    if (e.key === 'Escape') cancelAdd();
+                  }}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustom}
+                  disabled={!newNaam.trim()}
+                  className="px-2.5 py-1 text-xs font-medium text-white bg-[var(--accent)] rounded-lg hover:bg-[var(--accent-hover)] disabled:opacity-40 transition-colors"
+                >
+                  Toevoegen
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelAdd}
+                  className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  Annuleren
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Divider + totaal */}
+      <div className="h-px bg-[var(--border)]" />
+      <div className="flex justify-between text-sm font-bold text-[var(--text-primary)]">
+        <span>Totaal kosten deze druk</span>
+        <span className="tabular-nums">&euro; {formatEuro(totaal)}</span>
       </div>
     </div>
   );
@@ -282,16 +306,12 @@ export function KostenpostenSection({ titelInput, updateField }: Props) {
   const drukken = titelInput.drukken ?? [];
 
   const updateDruk = (idx: number, updated: DrukConfig) => {
-    const next = drukken.map((d, i) => i === idx ? updated : d);
+    const next = drukken.map((d, i) => (i === idx ? updated : d));
     updateField('drukken', next);
   };
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-[var(--text-tertiary)]">
-        Elke druk heeft eigen kosten. Selecteer per post of deze <strong>eenmalig</strong> (alleen deze druk) of <strong>terugkerend</strong> (elke druk) is.
-      </p>
-
       {drukken.map((druk, idx) => (
         <DrukKostenBlock
           key={idx}

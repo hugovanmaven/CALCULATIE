@@ -34,7 +34,7 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
 
   return (
     <div className="space-y-3">
-      {/* Titel + Auteur */}
+      {/* ─── Blok 1: Identiteit ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">
@@ -62,7 +62,6 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
         </div>
       </div>
 
-      {/* ISBN + Verschijningsdatum */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1">
@@ -84,36 +83,34 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
           <input
             type="date"
             value={titelInput.verschijningsdatum}
-            onChange={e => updateField('verschijningsdatum', e.target.value)}
+            onChange={e => {
+              const v = e.target.value;
+              updateField('verschijningsdatum', v);
+              // Auto-derive verschenen: true if date is today or in the past
+              if (v) {
+                const today = new Date().toISOString().slice(0, 10);
+                updateField('verschenen', v <= today);
+              } else {
+                updateField('verschenen', false);
+              }
+            }}
             className="w-full px-3 py-1.5 text-sm border border-[var(--border)] rounded-lg bg-[var(--bg-primary)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none"
           />
         </div>
       </div>
 
-      <div className="flex items-center">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={titelInput.verschenen}
-            onChange={e => updateField('verschenen', e.target.checked)}
-            className="w-4 h-4 rounded border-[var(--border)] text-emerald-600 focus:ring-emerald-500/20"
-          />
-          <span className="text-sm text-[var(--text-secondary)]">Verschenen</span>
-          {titelInput.verschenen && (
-            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 ring-1 ring-inset ring-emerald-600/20">
-              Gepubliceerd
-            </span>
-          )}
-        </label>
-      </div>
+      {/* ─── Divider ─── */}
+      <div className="h-px bg-[var(--border)]" />
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* ─── Blok 2: Prijs ─── */}
+      <div className="flex flex-wrap gap-3">
         <NumberInput
           label="Verkoopprijs incl BTW"
           value={titelInput.verkoopprijs_incl_btw}
           onChange={v => updateField('verkoopprijs_incl_btw', v)}
           prefix="&euro;"
           step={0.5}
+          width="sm"
         />
         <NumberInput
           label="BTW %"
@@ -121,18 +118,22 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
           onChange={v => updateField('btw_percentage', v / 100)}
           suffix="%"
           step={1}
+          width="xs"
+        />
+        <NumberInput
+          label="Boekhandelskorting"
+          value={titelInput.boekhandelskorting * 100}
+          onChange={v => updateField('boekhandelskorting', v / 100)}
+          suffix="%"
+          step={1}
+          width="xs"
         />
       </div>
-      <NumberInput
-        label="Boekhandelskorting"
-        value={titelInput.boekhandelskorting * 100}
-        onChange={v => updateField('boekhandelskorting', v / 100)}
-        suffix="%"
-        step={1}
-        help="Standaard 48%"
-      />
 
-      {/* ─── Drukken ─── */}
+      {/* ─── Divider ─── */}
+      <div className="h-px bg-[var(--border)]" />
+
+      {/* ─── Blok 3: Drukken ─── */}
       <div>
         <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-2">
           Drukken
@@ -200,7 +201,7 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
           Herdruk toevoegen
         </button>
         <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-          1e druk: alle kosten meegenomen. Herdrukken: eenmalige kosten vervallen.
+          Eenmalige kosten tellen alleen bij de 1e druk.
         </p>
       </div>
     </div>

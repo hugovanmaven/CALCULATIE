@@ -42,11 +42,12 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
   const druk = results.drukken[0];
   if (!druk) return null;
 
-  const totaalExemplaren = results.drukken.reduce((sum, d) => sum + d.oplage, 0);
+  const totaalExemplaren = results.totaal_oplage ?? results.drukken.reduce((sum, d) => sum + d.oplage, 0);
+  const margeTotaal = results.gewogen_marge_pct_totaal ?? druk.gewogen_marge_pct;
 
   return (
     <div className="space-y-4">
-      <HeadlineStats marge={druk.gewogen_marge_pct} totaalExemplaren={totaalExemplaren} />
+      <HeadlineStats marge={margeTotaal} totaalExemplaren={totaalExemplaren} />
       <KanaalCards druk={druk} verdeling={verdeling} />
 
       {/* Oplage simulatie */}
@@ -298,10 +299,8 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
     { label: 'Verkoopprijs ex BTW', value: w('verkoopprijs_ex_btw') },
     { label: 'Boekhandelskorting', value: -w('korting_bedrag') },
     { label: 'Netto omzet', value: w('netto_omzet'), type: 'subtotal' },
-    { label: 'Drukkosten', value: -w('drukkosten') },
-    { label: 'Productie /ex', value: -w('productie_per_ex') },
-    { label: 'Offline marketing /ex', value: -w('offline_marketing_per_ex') },
-    { label: 'Online marketing /ex', value: -w('online_marketing_per_ex') },
+    { label: 'Drukkosten /ex', value: -w('drukkosten') },
+    { label: 'Kostenposten /ex', value: -w('kosten_per_ex') },
     { label: 'Fulfillment', value: -w('fulfillment') },
     { label: 'Distributie CB', value: -w('distributie_cb') },
     { label: 'B2B porto', value: -w('b2b_porto') },

@@ -14,8 +14,6 @@ import { VerdelingSection } from './VerdelingSection';
 interface Props {
   titelInput: TitelInput;
   updateField: <K extends keyof TitelInput>(field: K, value: TitelInput[K]) => void;
-  herdrukOplages?: number[];
-  setHerdrukOplages?: (v: number[]) => void;
   verdeling: { webshop: number; retail: number; b2b: number };
   setVerdeling: (v: { webshop: number; retail: number; b2b: number }) => void;
 }
