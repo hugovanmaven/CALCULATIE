@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { TitelInput, CalculateResponse, SensitivityResponse, OplageSimResponse, DrukConfig } from '../api/types';
+import type { TitelInput, CalculateResponse, SensitivityResponse, OplageSimResponse } from '../api/types';
 import { DEFAULT_TITEL_INPUT, DEFAULT_KOSTENPOSTEN, DEFAULT_DRUK } from '../api/types';
 import {
   getTitel, saveTitel, calculate, sensitivityCac, sensitivityPrice, simulateOplage,
@@ -9,7 +9,6 @@ import { useDebounce } from './useDebounce';
 export interface TitelDetailState {
   id: string | null;
   titelInput: TitelInput;
-  herdrukOplages: number[];
   verdeling: { webshop: number; retail: number; b2b: number };
   dirty: boolean;
 }
@@ -17,19 +16,15 @@ export interface TitelDetailState {
 function migrateTitelInput(raw: any): TitelInput {
   const ti = { ...DEFAULT_TITEL_INPUT, ...raw } as TitelInput;
 
-  // Migrate old single-druk format to multi-druk
+  // Ensure at least one druk exists with valid kostenposten
   if (!ti.drukken || ti.drukken.length === 0) {
-    ti.drukken = [{
-      druknummer: ti.druknummer || 1,
-      oplage: ti.oplage_1e_druk || 2000,
-      drukkosten_per_ex: ti.drukkosten_1e_druk || 1.20,
-      kostenposten: ti.kostenposten?.length ? [...ti.kostenposten] : [...DEFAULT_KOSTENPOSTEN],
-    }];
+    ti.drukken = [{ ...DEFAULT_DRUK }];
   } else {
-    // Ensure each druk has kostenposten
     ti.drukken = ti.drukken.map(d => ({
       ...d,
-      kostenposten: d.kostenposten?.length ? d.kostenposten : [...DEFAULT_KOSTENPOSTEN],
+      kostenposten: d.kostenposten?.length
+        ? d.kostenposten.map(kp => ({ id: kp.id, naam: kp.naam, categorie: kp.categorie, bedrag: kp.bedrag }))
+        : [...DEFAULT_KOSTENPOSTEN],
     }));
   }
 
@@ -39,20 +34,11 @@ function migrateTitelInput(raw: any): TitelInput {
   if (ti.vertaler_voorschot === undefined) ti.vertaler_voorschot = 0;
   if (ti.illustrator_voorschot === undefined) ti.illustrator_voorschot = 0;
 
-  // Ensure extra_derden have voorschot
   if (ti.extra_derden) {
     ti.extra_derden = ti.extra_derden.map(d => ({
       ...d,
       voorschot: d.voorschot ?? 0,
     }));
-  }
-
-  // Sync legacy fields from first druk (for engine bridge)
-  if (ti.drukken.length > 0) {
-    const d1 = ti.drukken[0];
-    ti.druknummer = d1.druknummer;
-    ti.oplage_1e_druk = d1.oplage;
-    ti.drukkosten_1e_druk = d1.drukkosten_per_ex;
   }
 
   return ti;
@@ -61,8 +47,7 @@ function migrateTitelInput(raw: any): TitelInput {
 function newTitelState(): TitelDetailState {
   return {
     id: null,
-    titelInput: { ...DEFAULT_TITEL_INPUT, drukken: [{ ...DEFAULT_DRUK }], kostenposten: [...DEFAULT_KOSTENPOSTEN] },
-    herdrukOplages: [],
+    titelInput: { ...DEFAULT_TITEL_INPUT, drukken: [{ ...DEFAULT_DRUK }] },
     verdeling: { webshop: 0.10, retail: 0.90, b2b: 0.00 },
     dirty: false,
   };
@@ -101,7 +86,6 @@ export function useTitelDetail(titelId: string | null) {
       setState({
         id: st.id,
         titelInput: migrateTitelInput(st.titel_input),
-        herdrukOplages: st.herdruk_oplages ?? [],
         verdeling: {
           webshop: st.verdeling_webshop ?? 0.10,
           retail: st.verdeling_retail ?? 0.85,
@@ -131,7 +115,6 @@ export function useTitelDetail(titelId: string | null) {
       const saved = await saveTitel({
         id: s.id,
         titel_input: s.titelInput,
-        herdruk_oplages: s.herdrukOplages,
         verdeling_webshop: s.verdeling.webshop,
         verdeling_retail: s.verdeling.retail,
         verdeling_b2b: s.verdeling.b2b,
@@ -149,7 +132,6 @@ export function useTitelDetail(titelId: string | null) {
   // ── Auto-calculate (debounced 400ms) ──
   const calcRequest = {
     titel_input: state.titelInput,
-    herdruk_oplages: state.herdrukOplages,
     verdeling_webshop: state.verdeling.webshop,
     verdeling_retail: state.verdeling.retail,
     verdeling_b2b: state.verdeling.b2b,
@@ -183,23 +165,11 @@ export function useTitelDetail(titelId: string | null) {
 
   // ── Mutations ──
   const updateField = useCallback(<K extends keyof TitelInput>(field: K, value: TitelInput[K]) => {
-    setState(prev => {
-      const newInput = { ...prev.titelInput, [field]: value };
-
-      // If drukken changed, sync legacy fields from first druk
-      if (field === 'drukken' && Array.isArray(value) && (value as DrukConfig[]).length > 0) {
-        const d1 = (value as DrukConfig[])[0];
-        newInput.druknummer = d1.druknummer;
-        newInput.oplage_1e_druk = d1.oplage;
-        newInput.drukkosten_1e_druk = d1.drukkosten_per_ex;
-      }
-
-      return { ...prev, titelInput: newInput, dirty: true };
-    });
-  }, []);
-
-  const setHerdrukOplages = useCallback((v: number[]) => {
-    setState(prev => ({ ...prev, herdrukOplages: v, dirty: true }));
+    setState(prev => ({
+      ...prev,
+      titelInput: { ...prev.titelInput, [field]: value },
+      dirty: true,
+    }));
   }, []);
 
   const setVerdeling = useCallback((v: { webshop: number; retail: number; b2b: number }) => {
@@ -209,8 +179,6 @@ export function useTitelDetail(titelId: string | null) {
   return {
     titelInput: state.titelInput,
     updateField,
-    herdrukOplages: state.herdrukOplages,
-    setHerdrukOplages,
     verdeling: state.verdeling,
     setVerdeling,
     dirty: state.dirty,

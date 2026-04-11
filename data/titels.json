@@ -171,12 +171,12 @@
       "druknummer": 10,
       "verschijningsdatum": "",
       "verschenen": false,
-      "verkoopprijs_incl_btw": 26.5,
+      "verkoopprijs_incl_btw": 15.0,
       "btw_percentage": 0.09,
       "boekhandelskorting": 0.48,
-      "oplage_1e_druk": 2400,
-      "drukkosten_1e_druk": 2.0,
-      "drukkosten_herdruk": 2.0,
+      "oplage_1e_druk": 2500,
+      "drukkosten_1e_druk": 1.8,
+      "drukkosten_herdruk": 1.8,
       "vormgeving_omslag": 0.0,
       "vormgeving_binnenwerk": 0.0,
       "dtp": 0.0,
@@ -198,7 +198,7 @@
       "software_kosten": 0.0,
       "transactiekosten_pct": 0.02,
       "fulfillment_per_ex": 4.5,
-      "cac_per_ex": 8.9,
+      "cac_per_ex": 0.0,
       "distributie_cb_per_ex": 1.1,
       "b2b_porto_per_ex": 0.0,
       "b2b_korting_pct": 0.0,
@@ -206,11 +206,11 @@
       "auteur_royalty_staffel": [],
       "agent_staffel": [],
       "agent_pct": 0.11,
-      "vertaler_pct": 0.02,
+      "vertaler_pct": 0.0,
       "vertaler_staffel": [],
       "illustrator_pct": 0.0,
       "illustrator_staffel": [],
-      "heeft_partner": false,
+      "heeft_partner": true,
       "partner_naam": "POM",
       "overige_kosten_pct": 0.0,
       "kostenposten": [
@@ -317,14 +317,14 @@
           "naam": "Software kosten",
           "categorie": "online_marketing",
           "type": "terugkerend",
-          "bedrag": 100.0
+          "bedrag": 0.0
         }
       ],
       "gebruik_kostenposten": true
     },
     "herdruk_oplages": [],
-    "verdeling_webshop": 0.05,
-    "verdeling_retail": 0.95,
+    "verdeling_webshop": 0.1,
+    "verdeling_retail": 0.9,
     "verdeling_b2b": 0.0
   },
   "616f1c3e": {

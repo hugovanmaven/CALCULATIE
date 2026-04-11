@@ -3,19 +3,17 @@ import type { TitelInput } from '../../api/types';
 
 interface Props {
   titelInput: TitelInput;
-  herdrukOplages: number[];
   verdeling: { webshop: number; retail: number; b2b: number };
 }
 
-export function ExportButtons({ titelInput, herdrukOplages, verdeling }: Props) {
+export function ExportButtons({ titelInput, verdeling }: Props) {
   const handleExportCsv = async () => {
     try {
-      const res = await fetch('/api/export/csv', {
+      const res = await fetch('/calculatie/api/export/csv', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           titel_input: titelInput,
-          herdruk_oplages: herdrukOplages,
           verdeling_webshop: verdeling.webshop,
           verdeling_retail: verdeling.retail,
           verdeling_b2b: verdeling.b2b,

@@ -65,7 +65,6 @@ export async function getTitel(id: string): Promise<StoredTitel> {
 export async function saveTitel(data: {
   id?: string | null;
   titel_input: unknown;
-  herdruk_oplages: number[];
   verdeling_webshop: number;
   verdeling_retail: number;
   verdeling_b2b: number;

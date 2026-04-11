@@ -12,11 +12,12 @@ interface Props {
 export default function DetailView({ titelId, onBack }: Props) {
   const {
     titelInput, updateField,
-    herdrukOplages, setHerdrukOplages,
     verdeling, setVerdeling,
     dirty, loaded,
     results, cacSens, priceSens, oplageSim, loading,
   } = useTitelDetail(titelId);
+
+  const firstDruk = titelInput.drukken?.[0];
 
   if (!loaded) {
     return (
@@ -42,9 +43,9 @@ export default function DetailView({ titelId, onBack }: Props) {
             <div className="min-w-0">
               <h1 className="text-base font-semibold text-[var(--text-primary)] truncate">
                 {titelInput.titel || 'Nieuwe titel'}
-                {titelInput.druknummer > 1 && (
+                {firstDruk && firstDruk.druknummer > 1 && (
                   <span className="ml-1.5 text-sm font-normal text-[var(--text-tertiary)]">
-                    ({titelInput.druknummer}e druk)
+                    ({firstDruk.druknummer}e druk)
                   </span>
                 )}
               </h1>
@@ -71,7 +72,6 @@ export default function DetailView({ titelId, onBack }: Props) {
             {loading && <Loader2 size={16} className="animate-spin text-[var(--accent)]" />}
             <ExportButtons
               titelInput={titelInput}
-              herdrukOplages={herdrukOplages}
               verdeling={verdeling}
             />
           </div>
@@ -86,8 +86,6 @@ export default function DetailView({ titelId, onBack }: Props) {
             <CalculatieForm
               titelInput={titelInput}
               updateField={updateField}
-              herdrukOplages={herdrukOplages}
-              setHerdrukOplages={setHerdrukOplages}
               verdeling={verdeling}
               setVerdeling={setVerdeling}
             />
