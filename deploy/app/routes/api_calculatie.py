@@ -870,15 +870,6 @@ def export_excel():
         c.alignment = Alignment(horizontal="right" if ci > 1 else "left")
     r += 1
 
-    # Build simulation rows
-    sim_data_row = r
-
-    # Get values needed for simulation formulas
-    try:
-        from .api_calculatie import simulate_oplage  # noqa – reuse logic
-    except Exception:
-        pass
-
     # Compute simulation manually for 6 oplage points
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
     auteur_vs = ti.get("auteur_voorschot", 0)
