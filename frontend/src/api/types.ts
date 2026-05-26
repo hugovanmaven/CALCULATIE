@@ -158,12 +158,14 @@ export interface OplageSimRow {
   netto_resultaat: number;
   marge_pct: number;
   is_break_even: boolean;
+  is_voorschot_earn_out?: boolean;
   voorschot_ingelopen: boolean;
 }
 
 export interface OplageSimResponse {
   rows: OplageSimRow[];
   break_even_oplage: number | null;
+  voorschot_earn_out_oplage?: number | null;
 }
 
 export interface ValidateCheck {

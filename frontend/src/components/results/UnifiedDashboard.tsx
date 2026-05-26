@@ -165,10 +165,11 @@ function KanaalCards({ druk, verdeling }: { druk: any; verdeling: { webshop: num
 }
 
 function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
-  // Break-even always first, then ascending by volume
+  // Break-even eerst, dan voorschot-terugverdiend, dan oplopend op volume
   const sortedRows = [...sim.rows].sort((a, b) => {
-    if (a.is_break_even && !b.is_break_even) return -1;
-    if (!a.is_break_even && b.is_break_even) return 1;
+    const aKey = a.is_break_even ? 0 : a.is_voorschot_earn_out ? 1 : 2;
+    const bKey = b.is_break_even ? 0 : b.is_voorschot_earn_out ? 1 : 2;
+    if (aKey !== bKey) return aKey - bKey;
     return a.oplage - b.oplage;
   });
 
@@ -180,38 +181,47 @@ function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
       <p className="text-xs text-[var(--text-tertiary)] mb-3">
         Netto resultaat bij verschillende verkoopaantallen (incl. eenmalige kosten &amp; voorschotten)
       </p>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
         {sortedRows.map((row, i) => {
           const isBreakEven = row.is_break_even;
+          const isEarnOut = row.is_voorschot_earn_out;
+          const isHighlight = isBreakEven || isEarnOut;
           const isPositive = row.netto_resultaat >= 0;
+          const stripeColor = isBreakEven ? 'bg-[var(--accent)]'
+            : isEarnOut ? 'bg-violet-500'
+            : row.marge_pct >= STREEFMARGE ? 'bg-emerald-500'
+            : row.marge_pct >= 0 ? 'bg-amber-500'
+            : 'bg-red-400';
           return (
             <div
               key={i}
               className={`rounded-lg overflow-hidden transition-colors ${
-                isBreakEven
-                  ? 'ring-1 ring-[var(--accent)]/30'
+                isHighlight
+                  ? (isBreakEven ? 'ring-1 ring-[var(--accent)]/30' : 'ring-1 ring-violet-400/40')
                   : ''
               }`}
             >
-              {/* Colored top stripe based on margin */}
-              <div className={`h-1 w-full ${
-                isBreakEven ? 'bg-[var(--accent)]'
-                : row.marge_pct >= STREEFMARGE ? 'bg-emerald-500'
-                : row.marge_pct >= 0 ? 'bg-amber-500'
-                : 'bg-red-400'
-              }`} />
+              <div className={`h-1 w-full ${stripeColor}`} />
               <div className={`text-center p-3 ${
-                isBreakEven ? 'bg-[var(--accent)]/10' : 'bg-[var(--bg-primary)]'
+                isBreakEven ? 'bg-[var(--accent)]/10'
+                : isEarnOut ? 'bg-violet-50'
+                : 'bg-[var(--bg-primary)]'
               }`}>
                 {/* Label / kopje */}
                 <div className={`text-[10px] font-semibold uppercase tracking-wide mb-1 ${
-                  isBreakEven ? 'text-[var(--accent)]' : 'text-[var(--text-tertiary)]'
+                  isBreakEven ? 'text-[var(--accent)]'
+                  : isEarnOut ? 'text-violet-700'
+                  : 'text-[var(--text-tertiary)]'
                 }`}>
-                  {isBreakEven ? 'Break-even' : 'Exemplaren'}
+                  {isBreakEven ? 'Break-even'
+                   : isEarnOut ? 'Voorschot terugverdiend'
+                   : 'Exemplaren'}
                 </div>
                 {/* Volume number */}
                 <div className={`text-xl font-bold tabular-nums mb-1.5 ${
-                  isBreakEven ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'
+                  isBreakEven ? 'text-[var(--accent)]'
+                  : isEarnOut ? 'text-violet-700'
+                  : 'text-[var(--text-primary)]'
                 }`}>
                   {row.oplage.toLocaleString('nl-NL')}
                 </div>

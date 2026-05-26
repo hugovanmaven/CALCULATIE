@@ -562,81 +562,77 @@ def simulate_oplage():
             "netto_resultaat": round(net_result, 2),
             "marge_pct": round(marge, 4),
             "is_break_even": False,
+            "is_voorschot_earn_out": False,
             "voorschot_ingelopen": voorschot_ingelopen,
         }
 
-    # Find break-even: hoogste van (P&L positief, voorschotten ingelopen via royalty/commissie)
+    # P&L break-even (Maven's netto resultaat = 0, inclusief voorschot als investering)
     def find_break_even():
         r_at_1 = calc_result_at_volume(1)
         r_high = calc_result_at_volume(200000)
-
-        # 1. P&L-break-even via binary search
         if r_at_1["netto_resultaat"] >= 0:
-            pl_be = 0
-        elif r_high["netto_resultaat"] < 0:
             return None
-        else:
-            low, high = 1, 200000
-            for _ in range(50):
-                mid = (low + high) // 2
-                if calc_result_at_volume(mid)["netto_resultaat"] < 0:
-                    low = mid
-                else:
-                    high = mid
-                if high - low <= 10:
-                    break
-            pl_be = high
+        if r_high["netto_resultaat"] < 0:
+            return None
+        low, high = 1, 200000
+        for _ in range(50):
+            mid = (low + high) // 2
+            if calc_result_at_volume(mid)["netto_resultaat"] < 0:
+                low = mid
+            else:
+                high = mid
+            if high - low <= 10:
+                break
+        return max(((high + 24) // 50) * 50, 50)
 
-        # 2. Voorschot-ingelopen volume: totaal_voorschotten / totaal per-ex royalty
+    # Voorschot earn-out: oplage waarop de royalty's het voorschot dekken
+    def find_earn_out():
         total_recoup_per_ex = (
             (royalty_per_ex if auteur_voorschot > 0 else 0)
             + (agent_per_ex if agent_voorschot > 0 else 0)
             + (vertaler_per_ex if vertaler_voorschot > 0 else 0)
             + (illustrator_per_ex if illustrator_voorschot > 0 else 0)
         )
-        active_voorschotten = (
+        active_vs = (
             (auteur_voorschot if auteur_voorschot > 0 else 0)
             + (agent_voorschot if agent_voorschot > 0 else 0)
             + (vertaler_voorschot if vertaler_voorschot > 0 else 0)
             + (illustrator_voorschot if illustrator_voorschot > 0 else 0)
         )
-        if active_voorschotten > 0 and total_recoup_per_ex > 0:
-            earn_out = int(active_voorschotten / total_recoup_per_ex) + 1
-        else:
-            earn_out = 0
-
-        # Combined break-even: hoogste van beide. Rond UP naar 50 zodat
-        # het voorschot ook bij rounding zeker is ingelopen.
-        be = max(pl_be, earn_out)
-        be = ((be + 49) // 50) * 50
-        return max(be, 50)
+        if active_vs <= 0 or total_recoup_per_ex <= 0:
+            return None
+        eo = int(active_vs / total_recoup_per_ex) + 1
+        return ((eo + 49) // 50) * 50
 
     break_even = find_break_even()
+    voorschot_earn_out = find_earn_out()
 
-    # Build 4 simulation points
+    # Build simulation points: break-even, voorschot-earn-out, huidige oplage, +5k, +10k
     volumes = set()
-    volumes.add(totaal_oplage)  # Current total oplage
+    volumes.add(totaal_oplage)
     if break_even is not None and break_even > 0:
         volumes.add(break_even)
+    if voorschot_earn_out is not None and voorschot_earn_out > 0:
+        volumes.add(voorschot_earn_out)
     volumes.add(totaal_oplage + 5000)
     volumes.add(totaal_oplage + 10000)
 
-    # If break-even equals one of the others, add another point
-    if len(volumes) < 4:
-        volumes.add(totaal_oplage + 20000)
-
-    sorted_vols = sorted(volumes)[:4]
+    # Beperken tot maximaal 5 punten (anders te druk)
+    sorted_vols = sorted(volumes)[:5]
 
     rows = []
     for vol in sorted_vols:
         row = calc_result_at_volume(vol)
         if break_even is not None and vol == break_even:
             row["is_break_even"] = True
+        if voorschot_earn_out is not None and vol == voorschot_earn_out:
+            row["is_voorschot_earn_out"] = True
         rows.append(row)
 
     return jsonify({
         "rows": rows,
         "break_even_oplage": break_even,
+        "voorschot_earn_out_oplage": voorschot_earn_out,
     })
 
 
