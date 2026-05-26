@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { CalculateResponse, TitelInput, SensitivityResponse, OplageSimResponse } from '../../api/types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 
 const STREEFMARGE = 0.35;
 
@@ -38,6 +38,22 @@ function pct(v: number): string {
   return (v * 100).toFixed(1) + '%';
 }
 
+async function downloadExcel(body: unknown, titel: string) {
+  const res = await fetch('/calculatie/api/export/excel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return;
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `calculatie_${(titel || 'export').replace(/\s+/g, '_').slice(0, 30)}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, priceSens, oplageSim }: Props) {
   const druk = results.drukken[0];
   if (!druk) return null;
@@ -45,8 +61,19 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
   const totaalExemplaren = results.totaal_oplage ?? results.drukken.reduce((sum, d) => sum + d.oplage, 0);
   const margeTotaal = results.gewogen_marge_pct_totaal ?? druk.gewogen_marge_pct;
 
+  const exportBody = { titel_input: titelInput, verdeling_webshop: verdeling.webshop, verdeling_retail: verdeling.retail, verdeling_b2b: verdeling.b2b };
+
   return (
     <div className="space-y-4">
+      <div className="flex justify-end">
+        <button
+          onClick={() => downloadExcel(exportBody, titelInput.titel)}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-secondary)] transition-colors"
+        >
+          <Download size={13} />
+          Exporteer naar Excel
+        </button>
+      </div>
       <HeadlineStats marge={margeTotaal} totaalExemplaren={totaalExemplaren} />
       <KanaalCards druk={druk} verdeling={verdeling} />
 
