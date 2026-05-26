@@ -5,4 +5,4 @@ builder = "nixpacks"
 buildDir = "deploy"
 
 [deploy]
-startCommand = "cd deploy && gunicorn app:app --bind 0.0.0.0:$PORT"
+startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
