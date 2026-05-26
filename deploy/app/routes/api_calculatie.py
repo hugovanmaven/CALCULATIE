@@ -861,7 +861,7 @@ def export_excel():
     h2(ws_sheet[f"A{r}"], "OPLAGE SIMULATIE")
     r += 1
 
-    sim_headers = ["Oplage", "Netto omzet", "Drukkosten", "Kostenposten", "Voorschotten", "Royalties", "Netto resultaat", "Marge %"]
+    sim_headers = ["Oplage", "Netto omzet", "Drukkosten", "Kostenposten", "Voorschot", "Royalty boven voorschot", "Netto resultaat", "Marge %"]
     for ci, hdr in enumerate(sim_headers, 1):
         c = ws_sheet.cell(r, ci)
         c.value = hdr
@@ -924,27 +924,38 @@ def export_excel():
         if rem > 0 and drukken_cfg:
             dk += rem * drukken_cfg[-1].get("drukkosten_per_ex", 1.20)
 
+        # Effectieve cost per partij = max(voorschot, verdiende royalty/commissie)
+        # Splits dit op in: voorschot (vast) + royalty boven voorschot (= max(0, earned - voorschot))
+        royalty_boven_voorschot = 0.0
         eff = totaal_eenmalig_sim
+
         if auteur_vs > 0:
-            eff += max(auteur_vs, vol * royalty_pex) if royalty_pex > 0 else auteur_vs
+            auteur_earned = vol * royalty_pex
+            eff += max(auteur_vs, auteur_earned) if royalty_pex > 0 else auteur_vs
+            royalty_boven_voorschot += max(0.0, auteur_earned - auteur_vs) if royalty_pex > 0 else 0
         if agent_vs > 0:
-            eff += max(agent_vs, vol * agent_pex) if agent_pex > 0 else agent_vs
+            agent_earned = vol * agent_pex
+            eff += max(agent_vs, agent_earned) if agent_pex > 0 else agent_vs
+            royalty_boven_voorschot += max(0.0, agent_earned - agent_vs) if agent_pex > 0 else 0
         if vertaler_vs > 0:
-            eff += max(vertaler_vs, vol * vertaler_pex) if vertaler_pex > 0 else vertaler_vs
+            vertaler_earned = vol * vertaler_pex
+            eff += max(vertaler_vs, vertaler_earned) if vertaler_pex > 0 else vertaler_vs
+            royalty_boven_voorschot += max(0.0, vertaler_earned - vertaler_vs) if vertaler_pex > 0 else 0
         if illustrator_vs > 0:
+            illustrator_earned = vol * illustrator_pex
             eff += max(illustrator_vs, vol * illustrator_pex) if illustrator_pex > 0 else illustrator_vs
+            royalty_boven_voorschot += max(0.0, vol * illustrator_pex - illustrator_vs) if illustrator_pex > 0 else 0
         eff += extra_vs
 
         omzet = vol * netto_omzet_pex
-        royalties = (
-            (min(vol * royalty_pex, auteur_vs) if auteur_vs > 0 else vol * royalty_pex) +
-            (min(vol * agent_pex, agent_vs) if agent_vs > 0 else vol * agent_pex)
-        )
         net = vol * adj_pex - dk - eff
         marge = net / omzet if omzet > 0 else 0
-        return {"vol": vol, "omzet": omzet, "drukkosten": dk, "kostenposten": totaal_eenmalig_sim,
-                "voorschotten": totaal_vs, "royalties_eff": eff - totaal_eenmalig_sim,
-                "net": net, "marge": marge}
+        return {
+            "vol": vol, "omzet": omzet, "drukkosten": dk, "kostenposten": totaal_eenmalig_sim,
+            "voorschot": totaal_vs,
+            "royalty_boven_voorschot": royalty_boven_voorschot,
+            "net": net, "marge": marge,
+        }
 
     # Find break-even
     def find_be():
@@ -996,8 +1007,8 @@ def export_excel():
         sc(2, sd["omzet"], "€ #,##0")
         sc(3, sd["drukkosten"], "€ #,##0")
         sc(4, sd["kostenposten"], "€ #,##0")
-        sc(5, sd["voorschotten"], "€ #,##0")
-        sc(6, sd["royalties_eff"], "€ #,##0")
+        sc(5, sd["voorschot"], "€ #,##0")
+        sc(6, sd["royalty_boven_voorschot"], "€ #,##0")
         sc(7, sd["net"], "€ #,##0")
         marg_c = ws_sheet.cell(r, 8)
         marg_c.value = sd["marge"]
@@ -1008,6 +1019,19 @@ def export_excel():
         marg_c.alignment = Alignment(horizontal="right")
         r += 1
 
+    # Toelichting onder de tabel
+    r += 1
+    ws_sheet.merge_cells(f"A{r}:H{r}")
+    note_cell = ws_sheet[f"A{r}"]
+    note_cell.value = (
+        "Voorschot = wat Maven upfront betaalt (vast). Royalty boven voorschot = "
+        "pas uitgekeerd nadat het voorschot via royalty's is ingelopen. "
+        "Overige variabele kosten (CAC, fulfillment, CB-distributie, transactiekosten, "
+        "royalty zonder voorschot) zijn al verwerkt in het netto resultaat."
+    )
+    note_cell.font = Font(size=8, italic=True, color="FF666666")
+    note_cell.alignment = Alignment(wrap_text=True, vertical="top")
+    ws_sheet.row_dimensions[r].height = 30
     r += 2
 
     # ── DEALS ──
