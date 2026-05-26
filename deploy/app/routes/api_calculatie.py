@@ -565,33 +565,50 @@ def simulate_oplage():
             "voorschot_ingelopen": voorschot_ingelopen,
         }
 
-    # Find break-even via binary search
+    # Find break-even: hoogste van (P&L positief, voorschotten ingelopen via royalty/commissie)
     def find_break_even():
-        # Check profitability at small and large volumes
         r_at_1 = calc_result_at_volume(1)
         r_high = calc_result_at_volume(200000)
 
-        # If already profitable at 1 copy (no fixed costs), no meaningful break-even
+        # 1. P&L-break-even via binary search
         if r_at_1["netto_resultaat"] >= 0:
+            pl_be = 0
+        elif r_high["netto_resultaat"] < 0:
             return None
+        else:
+            low, high = 1, 200000
+            for _ in range(50):
+                mid = (low + high) // 2
+                if calc_result_at_volume(mid)["netto_resultaat"] < 0:
+                    low = mid
+                else:
+                    high = mid
+                if high - low <= 10:
+                    break
+            pl_be = high
 
-        # If still unprofitable at 200k, no break-even possible
-        if r_high["netto_resultaat"] < 0:
-            return None
+        # 2. Voorschot-ingelopen volume: totaal_voorschotten / totaal per-ex royalty
+        total_recoup_per_ex = (
+            (royalty_per_ex if auteur_voorschot > 0 else 0)
+            + (agent_per_ex if agent_voorschot > 0 else 0)
+            + (vertaler_per_ex if vertaler_voorschot > 0 else 0)
+            + (illustrator_per_ex if illustrator_voorschot > 0 else 0)
+        )
+        active_voorschotten = (
+            (auteur_voorschot if auteur_voorschot > 0 else 0)
+            + (agent_voorschot if agent_voorschot > 0 else 0)
+            + (vertaler_voorschot if vertaler_voorschot > 0 else 0)
+            + (illustrator_voorschot if illustrator_voorschot > 0 else 0)
+        )
+        if active_voorschotten > 0 and total_recoup_per_ex > 0:
+            earn_out = int(active_voorschotten / total_recoup_per_ex) + 1
+        else:
+            earn_out = 0
 
-        low, high = 1, 200000
-        for _ in range(50):
-            mid = (low + high) // 2
-            r_mid = calc_result_at_volume(mid)
-            if r_mid["netto_resultaat"] < 0:
-                low = mid
-            else:
-                high = mid
-            if high - low <= 10:
-                break
-
-        # Round to nearest 50
-        be = ((high + 24) // 50) * 50
+        # Combined break-even: hoogste van beide. Rond UP naar 50 zodat
+        # het voorschot ook bij rounding zeker is ingelopen.
+        be = max(pl_be, earn_out)
+        be = ((be + 49) // 50) * 50
         return max(be, 50)
 
     break_even = find_break_even()
@@ -957,22 +974,41 @@ def export_excel():
             "net": net, "marge": marge,
         }
 
-    # Find break-even
+    # Find break-even: hoogste van (P&L positief, voorschotten ingelopen via royalty's)
     def find_be():
-        if sim_at(1)["net"] >= 0:
-            return None
         if sim_at(200000)["net"] < 0:
             return None
-        lo, hi = 1, 200000
-        for _ in range(50):
-            mid = (lo + hi) // 2
-            if sim_at(mid)["net"] < 0:
-                lo = mid
-            else:
-                hi = mid
-            if hi - lo <= 10:
-                break
-        return ((hi + 24) // 50) * 50
+        if sim_at(1)["net"] >= 0:
+            pl_be = 0
+        else:
+            lo, hi = 1, 200000
+            for _ in range(50):
+                mid = (lo + hi) // 2
+                if sim_at(mid)["net"] < 0:
+                    lo = mid
+                else:
+                    hi = mid
+                if hi - lo <= 10:
+                    break
+            pl_be = hi
+
+        # Voorschot-ingelopen volume
+        total_recoup_per_ex = (
+            (royalty_pex if auteur_vs > 0 else 0)
+            + (agent_pex if agent_vs > 0 else 0)
+            + (vertaler_pex if vertaler_vs > 0 else 0)
+            + (illustrator_pex if illustrator_vs > 0 else 0)
+        )
+        active_vs = (
+            (auteur_vs if auteur_vs > 0 else 0)
+            + (agent_vs if agent_vs > 0 else 0)
+            + (vertaler_vs if vertaler_vs > 0 else 0)
+            + (illustrator_vs if illustrator_vs > 0 else 0)
+        )
+        earn_out = int(active_vs / total_recoup_per_ex) + 1 if (active_vs > 0 and total_recoup_per_ex > 0) else 0
+
+        be = max(pl_be, earn_out)
+        return ((be + 49) // 50) * 50
 
     be_vol = find_be()
 
