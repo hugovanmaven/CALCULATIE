@@ -5,6 +5,7 @@ Alle endpoints voor het Maven Calculatiemodel.
 
 import csv
 import io
+import json
 from dataclasses import asdict
 from flask import Blueprint, request, jsonify, Response, abort
 
@@ -362,6 +363,71 @@ def unarchive_titel(titel_id):
     data["archived"] = False
     storage.save_titel(titel_id, data)
     return jsonify(ok=True)
+
+
+@bp.route("/api/backup/export", methods=["GET"])
+def backup_export():
+    """Download alle titels als JSON-bestand voor handmatige backup."""
+    from io import BytesIO
+    from datetime import datetime as _dt
+    from flask import send_file
+    all_data = storage.load_all()
+    buf = BytesIO(json.dumps(all_data, ensure_ascii=False, indent=2).encode("utf-8"))
+    buf.seek(0)
+    ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"calculatie_backup_{ts}.json",
+        mimetype="application/json",
+    )
+
+
+@bp.route("/api/backup/list", methods=["GET"])
+def backup_list():
+    """Lijst beschikbare automatische backups."""
+    return jsonify({"backups": storage.list_backups()})
+
+
+@bp.route("/api/backup/restore", methods=["POST"])
+def backup_restore():
+    """Restore een eerdere backup over de huidige data heen.
+
+    Body: {"name": "calculatie_titels_20260530_120000.json"}
+    De huidige data wordt eerst nog als backup bewaard.
+    """
+    data = request.get_json() or {}
+    name = data.get("name", "")
+    if not name:
+        abort(400, description="Geen backup-naam meegegeven")
+    if storage.restore_backup(name):
+        return jsonify({"restored": True, "name": name})
+    abort(404, description="Backup niet gevonden")
+
+
+@bp.route("/api/backup/import", methods=["POST"])
+def backup_import():
+    """Upload een JSON-backup en merge in de database.
+
+    Body: {"data": {...}, "mode": "merge"|"replace"}
+    - merge (default): voeg titels toe, overschrijf bestaande met dezelfde id
+    - replace: vervang de hele database (huidige data wordt eerst gebackupt)
+    """
+    body = request.get_json() or {}
+    new_data = body.get("data")
+    mode = body.get("mode", "merge")
+    if not isinstance(new_data, dict):
+        abort(400, description="data moet een object zijn met titel-id's als sleutels")
+
+    if mode == "replace":
+        storage.save_all(new_data)
+        return jsonify({"imported": len(new_data), "mode": "replace"})
+
+    # merge
+    current = storage.load_all()
+    current.update(new_data)
+    storage.save_all(current)
+    return jsonify({"imported": len(new_data), "total": len(current), "mode": "merge"})
 
 
 @bp.route("/api/seed", methods=["POST"])
