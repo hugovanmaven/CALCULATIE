@@ -2,7 +2,15 @@ import { useState } from 'react';
 import type { CalculateResponse, TitelInput, SensitivityResponse, OplageSimResponse } from '../../api/types';
 import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 
-const STREEFMARGE = 0.35;
+// Streefmarges per kanaal: webshop hoger omdat de volle verkoopprijs binnenkomt
+// en CAC/fulfillment de marge anders verbergen; retail en B2B op 35%.
+const STREEFMARGE = {
+  retail: 0.35,
+  webshop: 0.40,
+  b2b: 0.35,
+  gewogen: 0.35,
+} as const;
+type KanaalSleutel = keyof typeof STREEFMARGE;
 
 interface Props {
   results: CalculateResponse;
@@ -13,14 +21,16 @@ interface Props {
   oplageSim: OplageSimResponse | null;
 }
 
-function margeBadge(pct: number): string {
-  if (pct >= STREEFMARGE) return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
+function margeBadge(pct: number, kanaal: KanaalSleutel = 'gewogen'): string {
+  const target = STREEFMARGE[kanaal];
+  if (pct >= target) return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
   if (pct >= 0.20) return 'bg-amber-50 text-amber-700 ring-amber-600/20';
   return 'bg-red-50 text-red-700 ring-red-600/20';
 }
 
-function margeColor(pct: number): string {
-  if (pct >= STREEFMARGE) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+function margeColor(pct: number, kanaal: KanaalSleutel = 'gewogen'): string {
+  const target = STREEFMARGE[kanaal];
+  if (pct >= target) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
   if (pct >= 0.20) return 'text-amber-700 bg-amber-50 border-amber-200';
   return 'text-red-700 bg-red-50 border-red-200';
 }
@@ -100,7 +110,7 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
 function HeadlineStats({ marge, totaalExemplaren }: { marge: number; totaalExemplaren: number }) {
   const margeVal = marge * 100;
   const barWidth = Math.min(Math.max(margeVal, 0), 70);
-  const targetLeft = (STREEFMARGE * 100 / 70) * 100;
+  const targetLeft = (STREEFMARGE.gewogen * 100 / 70) * 100;
 
   return (
     <div className="grid grid-cols-3 gap-3">
@@ -112,14 +122,14 @@ function HeadlineStats({ marge, totaalExemplaren }: { marge: number; totaalExemp
         </div>
         <div className="relative h-2.5 bg-black/5 rounded-full overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-500 ${marge >= STREEFMARGE ? 'bg-emerald-500' : marge >= 0.20 ? 'bg-amber-500' : 'bg-red-500'}`}
+            className={`h-full rounded-full transition-all duration-500 ${marge >= STREEFMARGE.gewogen ? 'bg-emerald-500' : marge >= 0.20 ? 'bg-amber-500' : 'bg-red-500'}`}
             style={{ width: `${barWidth / 70 * 100}%` }}
           />
           <div className="absolute top-0 h-full w-0.5 bg-black/30" style={{ left: `${targetLeft}%` }} />
         </div>
         <div className="flex justify-between mt-1">
           <span className="text-[10px] opacity-50">0%</span>
-          <span className="text-[10px] opacity-50" style={{ marginLeft: `${targetLeft - 15}%` }}>streef {pct(STREEFMARGE)}</span>
+          <span className="text-[10px] opacity-50" style={{ marginLeft: `${targetLeft - 15}%` }}>streef {pct(STREEFMARGE.gewogen)}</span>
           <span className="text-[10px] opacity-50">70%</span>
         </div>
       </div>
@@ -151,8 +161,8 @@ function KanaalCards({ druk, verdeling }: { druk: any; verdeling: { webshop: num
             <span className="text-[10px] text-[var(--text-tertiary)]">{(k.pct * 100).toFixed(0)}%</span>
           </div>
           <div className="text-2xl font-bold text-[var(--text-primary)] mb-1.5 tabular-nums">&euro; {fmt(k.data.netto_winst_maven)}</div>
-          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset ${margeBadge(k.data.marge_pct)}`}>
-            {pct(k.data.marge_pct)} marge
+          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset ${margeBadge(k.data.marge_pct, k.key as KanaalSleutel)}`}>
+            {pct(k.data.marge_pct)} marge <span className="opacity-60 ml-1">/ streef {pct(STREEFMARGE[k.key as KanaalSleutel])}</span>
           </span>
           <div className="mt-3 text-[11px] text-[var(--text-tertiary)] space-y-0.5">
             <div className="flex justify-between"><span>Netto omzet</span><span className="tabular-nums">&euro; {fmt(k.data.netto_omzet)}</span></div>
@@ -189,7 +199,7 @@ function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
           const isPositive = row.netto_resultaat >= 0;
           const stripeColor = isBreakEven ? 'bg-[var(--accent)]'
             : isEarnOut ? 'bg-violet-500'
-            : row.marge_pct >= STREEFMARGE ? 'bg-emerald-500'
+            : row.marge_pct >= STREEFMARGE.gewogen ? 'bg-emerald-500'
             : row.marge_pct >= 0 ? 'bg-amber-500'
             : 'bg-red-400';
           return (
@@ -233,7 +243,7 @@ function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
                 </div>
                 {/* Margin */}
                 <div className={`text-xs font-medium tabular-nums ${
-                  row.marge_pct >= STREEFMARGE ? 'text-emerald-600'
+                  row.marge_pct >= STREEFMARGE.gewogen ? 'text-emerald-600'
                   : row.marge_pct >= 0 ? 'text-amber-600'
                   : 'text-red-600'
                 }`}>
@@ -275,7 +285,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
         {keyRows.map((row, i) => {
           const isCurrent = Math.abs(row.variable_value - currentCac) < 0.01;
           const marge = row.webshop_marge_pct;
-          const stripeColor = marge >= STREEFMARGE ? 'bg-emerald-500'
+          const stripeColor = marge >= STREEFMARGE.webshop ? 'bg-emerald-500'
             : marge >= 0.20 ? 'bg-amber-500'
             : 'bg-red-400';
           return (
@@ -295,7 +305,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
                 </div>
                 {/* Margin — primary metric */}
                 <div className={`text-lg font-bold tabular-nums ${
-                  marge >= STREEFMARGE ? 'text-emerald-600'
+                  marge >= STREEFMARGE.webshop ? 'text-emerald-600'
                   : marge >= 0.20 ? 'text-amber-600'
                   : 'text-red-600'
                 }`}>{pct(marge)}</div>
@@ -324,8 +334,8 @@ function VerkoopprijsAdvies({ priceSens, currentPrice }: { priceSens: Sensitivit
 
   const currentRow = filteredRows.find(r => Math.abs(r.variable_value - currentPrice) < 0.01);
   const currentMarge = currentRow?.gewogen_marge_pct ?? 0;
-  const needsHigher = currentMarge < STREEFMARGE;
-  const targetRow = rows.find(r => r.gewogen_marge_pct >= STREEFMARGE);
+  const needsHigher = currentMarge < STREEFMARGE.gewogen;
+  const targetRow = rows.find(r => r.gewogen_marge_pct >= STREEFMARGE.gewogen);
 
   return (
     <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4">
@@ -341,14 +351,14 @@ function VerkoopprijsAdvies({ priceSens, currentPrice }: { priceSens: Sensitivit
       </div>
       {targetRow && needsHigher && (
         <p className="text-xs text-[var(--text-tertiary)] mb-3">
-          Voor {pct(STREEFMARGE)} marge: minimaal <strong className="text-[var(--text-primary)]">&euro; {fmt(targetRow.variable_value)}</strong>
+          Voor {pct(STREEFMARGE.gewogen)} marge: minimaal <strong className="text-[var(--text-primary)]">&euro; {fmt(targetRow.variable_value)}</strong>
         </p>
       )}
       <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
         {filteredRows.map((row, i) => {
           const isCurrent = Math.abs(row.variable_value - currentPrice) < 0.01;
           const marge = row.gewogen_marge_pct;
-          const stripeColor = marge >= STREEFMARGE ? 'bg-emerald-500'
+          const stripeColor = marge >= STREEFMARGE.gewogen ? 'bg-emerald-500'
             : marge >= 0.20 ? 'bg-amber-500'
             : 'bg-red-400';
           return (
@@ -360,7 +370,7 @@ function VerkoopprijsAdvies({ priceSens, currentPrice }: { priceSens: Sensitivit
                   {isCurrent && <span className="ml-1 font-normal opacity-70">huidig</span>}
                 </div>
                 <div className={`text-lg font-bold tabular-nums ${
-                  marge >= STREEFMARGE ? 'text-emerald-600' : marge >= 0.20 ? 'text-amber-600' : 'text-red-600'
+                  marge >= STREEFMARGE.gewogen ? 'text-emerald-600' : marge >= 0.20 ? 'text-amber-600' : 'text-red-600'
                 }`}>{pct(marge)}</div>
               </div>
             </div>
@@ -392,7 +402,7 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
     return druk[activeTab]?.[field] ?? 0;
   };
 
-  const lines: { label: string; value: number; type?: 'subtotal' }[] = [
+  const lines: { label: string; value: number; type?: 'subtotal' | 'info' }[] = [
     { label: 'Verkoopprijs ex BTW', value: v('verkoopprijs_ex_btw') },
     { label: 'Boekhandelskorting', value: -v('korting_bedrag') },
     { label: 'Netto omzet', value: v('netto_omzet'), type: 'subtotal' },
@@ -410,9 +420,9 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
     { label: 'Brutowinst', value: v('brutowinst'), type: 'subtotal' },
     { label: 'Auteur royalty', value: -v('auteur_royalty') },
     { label: 'Auteur winstdeling', value: -v('auteur_winstdeling') },
-    { label: 'Partner winstdeling', value: -v('partner_winstdeling') },
     { label: 'Netto winst Maven', value: v('netto_winst_maven'), type: 'subtotal' },
-  ].filter((l): l is { label: string; value: number; type?: 'subtotal' } => Math.abs(l.value) > 0.001 || l.type === 'subtotal');
+    { label: 'Partner winstdeling (informatief, niet in marge)', value: -v('partner_winstdeling'), type: 'info' },
+  ].filter((l): l is { label: string; value: number; type?: 'subtotal' | 'info' } => Math.abs(l.value) > 0.001 || l.type === 'subtotal');
 
   const nettoOmzet = v('netto_omzet');
 
@@ -448,11 +458,16 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
           <div className="space-y-0.5">
             {lines.map((line, i) => (
               <div key={i} className={`flex items-center justify-between text-sm py-1.5 px-3 rounded-lg ${
-                line.type === 'subtotal' ? 'bg-[var(--bg-primary)] font-semibold mt-1' : ''
+                line.type === 'subtotal' ? 'bg-[var(--bg-primary)] font-semibold mt-1'
+                : line.type === 'info' ? 'italic text-[var(--text-tertiary)] mt-1'
+                : ''
               }`}>
-                <span className="text-[var(--text-secondary)]">{line.label}</span>
+                <span className={line.type === 'info' ? 'text-[var(--text-tertiary)]' : 'text-[var(--text-secondary)]'}>{line.label}</span>
                 <div className="flex items-center gap-3 tabular-nums">
-                  <span className={line.value < 0 ? 'text-red-600' : 'text-[var(--text-primary)]'}>&euro; {fmt(line.value)}</span>
+                  <span className={
+                    line.type === 'info' ? 'text-[var(--text-tertiary)]'
+                    : line.value < 0 ? 'text-red-600' : 'text-[var(--text-primary)]'
+                  }>&euro; {fmt(line.value)}</span>
                   {nettoOmzet > 0 && (
                     <span className="text-[10px] text-[var(--text-tertiary)] w-12 text-right">
                       {((line.value / nettoOmzet) * 100).toFixed(1)}%

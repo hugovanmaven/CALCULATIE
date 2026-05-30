@@ -61,7 +61,7 @@ class TitelInput:
     drukken: list[DrukConfig] = field(default_factory=list)
 
     # ── Webshop-specifieke kosten ──
-    transactiekosten_pct: float = 0.02
+    transactiekosten_pct: float = 0.002  # Shopify ~0,2%
     fulfillment_per_ex: float = 4.50
     cac_per_ex: float = 0.0
 
@@ -309,13 +309,18 @@ def bereken_kanaal(
         r.illustrator = r.brutowinst * t.illustrator_winstdeling_pct
         derden_winstdeling += r.illustrator
 
-    # ── STAP 5: Partner ──
+    # ── STAP 5: Partner (informatief) ──
+    # Partner-winstdeling (POM/UvNL) wordt buiten de titel-marge gehouden.
+    # De afspraak is dat dit via productiehuis-overhead apart wordt geregeld;
+    # voor de titel-marge willen we weten wat er ná auteur, vóór partner
+    # overblijft. partner_winstdeling blijft berekend en zichtbaar in de
+    # uitsplitsing, maar telt NIET mee in netto_winst_maven of marge_pct.
     if t.heeft_partner:
         winst_na_auteur = r.brutowinst - auteur_totaal - derden_winstdeling
         r.partner_winstdeling = winst_na_auteur * t.partner_winstdeling_pct
 
-    # ── STAP 6: Netto winst Maven ──
-    r.netto_winst_maven = r.brutowinst - auteur_totaal - derden_winstdeling - r.partner_winstdeling
+    # ── STAP 6: Netto winst Maven (ná auteur + derden, vóór partner) ──
+    r.netto_winst_maven = r.brutowinst - auteur_totaal - derden_winstdeling
 
     if r.netto_omzet > 0:
         r.marge_pct = r.netto_winst_maven / r.netto_omzet

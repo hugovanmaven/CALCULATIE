@@ -62,7 +62,7 @@ def _migrate_titel(titel: dict) -> dict:
     ti.setdefault("verschenen", False)
     ti.setdefault("btw_percentage", 0.09)
     ti.setdefault("boekhandelskorting", 0.48)
-    ti.setdefault("transactiekosten_pct", 0.02)
+    ti.setdefault("transactiekosten_pct", 0.002)
     ti.setdefault("fulfillment_per_ex", 4.50)
     ti.setdefault("cac_per_ex", 0.0)
     ti.setdefault("distributie_cb_per_ex", 1.10)

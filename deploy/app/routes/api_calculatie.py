@@ -63,7 +63,7 @@ def dict_to_titel_input(d: dict) -> TitelInput:
         boekhandelskorting=d.get("boekhandelskorting", 0.48),
         drukken=_drukken_list(d.get("drukken", [])),
         # Webshop
-        transactiekosten_pct=d.get("transactiekosten_pct", 0.02),
+        transactiekosten_pct=d.get("transactiekosten_pct", 0.002),
         fulfillment_per_ex=d.get("fulfillment_per_ex", 4.50),
         cac_per_ex=d.get("cac_per_ex", 0.0),
         # Retail
@@ -457,7 +457,7 @@ def seed_database():
                     "drukkosten_per_ex": 1.20,
                     "kostenposten": [],
                 }],
-                "transactiekosten_pct": 0.02,
+                "transactiekosten_pct": 0.002,
                 "fulfillment_per_ex": 4.50,
                 "cac_per_ex": 0.0,
                 "distributie_cb_per_ex": 1.10,
@@ -1271,7 +1271,7 @@ def import_csv_file():
                 "btw_percentage": parse_float(first_row, "btw_percentage", 0.09),
                 "boekhandelskorting": parse_float(first_row, "boekhandelskorting", 0.48),
                 "drukken": drukken,
-                "transactiekosten_pct": 0.02,
+                "transactiekosten_pct": 0.002,
                 "fulfillment_per_ex": 4.50,
                 "cac_per_ex": 0.0,
                 "distributie_cb_per_ex": 1.10,

@@ -243,7 +243,7 @@ export const DEFAULT_TITEL_INPUT: TitelInput = {
   boekhandelskorting: 0.48,
   drukken: [{ ...DEFAULT_DRUK }],
   // Webshop
-  transactiekosten_pct: 0.02,
+  transactiekosten_pct: 0.002,
   fulfillment_per_ex: 4.50,
   cac_per_ex: 0.0,
   // Retail/CB
