@@ -1,8 +1,9 @@
-import type { TitelInput } from '../../api/types';
+import type { TitelInput, DrukConfig } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
 import { TitelgroepPicker } from './TitelgroepPicker';
-import { KostenpostenSection } from './KostenpostenSection';
+import { DrukKostenBlock } from './KostenpostenSection';
+import { MarketingSection } from './MarketingSection';
 import { WebshopKostenSection } from './WebshopKostenSection';
 import { RetailKostenSection } from './RetailKostenSection';
 import { B2bKostenSection } from './B2bKostenSection';
@@ -37,6 +38,12 @@ export function CalculatieForm({
   verdeling, setVerdeling,
   titelgroepId, setTitelgroepId,
 }: Props) {
+  const drukken = titelInput.drukken ?? [];
+
+  const updateDruk = (idx: number, updated: DrukConfig) => {
+    updateField('drukken', drukken.map((d, i) => (i === idx ? updated : d)));
+  };
+
   return (
     <div className="space-y-1">
       {/* ─── TITEL & BOEK ─── */}
@@ -47,11 +54,25 @@ export function CalculatieForm({
         </div>
       </Section>
 
-      {/* ─── PRODUCTIE & KOSTEN ─── */}
+      {/* ─── PRODUCTIE & KOSTEN — Section per druk ─── */}
       <GroupLabel>Productie &amp; kosten</GroupLabel>
 
-      <Section title="Kostenposten" defaultOpen>
-        <KostenpostenSection titelInput={titelInput} updateField={updateField} />
+      {drukken.map((druk, idx) => (
+        <Section
+          key={idx}
+          title={`${druk.druknummer}e druk`}
+          subtitle={`${druk.oplage.toLocaleString('nl-NL')} ex`}
+          defaultOpen={idx === 0}
+        >
+          <DrukKostenBlock druk={druk} onDrukChange={updated => updateDruk(idx, updated)} />
+        </Section>
+      ))}
+
+      {/* ─── MARKETING ─── */}
+      <GroupLabel>Marketing</GroupLabel>
+
+      <Section title="Acquisitiekosten (CAC)">
+        <MarketingSection titelInput={titelInput} updateField={updateField} />
       </Section>
 
       {/* ─── VERKOOPKANALEN ─── */}

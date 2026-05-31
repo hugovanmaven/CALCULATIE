@@ -1,12 +1,7 @@
 import { useState } from 'react';
-import type { TitelInput, KostenPost, DrukConfig } from '../../api/types';
+import type { KostenPost, DrukConfig } from '../../api/types';
 import { DEFAULT_KOSTENPOSTEN } from '../../api/types';
 import { Plus } from 'lucide-react';
-
-interface Props {
-  titelInput: TitelInput;
-  updateField: <K extends keyof TitelInput>(field: K, value: TitelInput[K]) => void;
-}
 
 /* ───── helpers ───── */
 
@@ -154,16 +149,14 @@ function CategorieGroep({
   );
 }
 
-/* ───── Per-druk kostenposten block ───── */
+/* ───── Per-druk kostenposten block (zonder eigen wrapper — wordt in Section gerenderd) ───── */
 
-function DrukKostenBlock({
+export function DrukKostenBlock({
   druk,
   onDrukChange,
-  isFirst,
 }: {
   druk: DrukConfig;
   onDrukChange: (updated: DrukConfig) => void;
-  isFirst: boolean;
 }) {
   const [addingTo, setAddingTo] = useState<KostenPost['categorie'] | null>(null);
   const [newNaam, setNewNaam] = useState('');
@@ -207,17 +200,7 @@ function DrukKostenBlock({
   const totaal = kostenTotaal + drukkostenTotaal;
 
   return (
-    <div
-      className={`space-y-3 p-4 rounded-xl border ${
-        isFirst
-          ? 'bg-[var(--accent-light)] border-[var(--accent)]/20'
-          : 'bg-[var(--bg-primary)] border-[var(--border)]'
-      }`}
-    >
-      <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-        {druk.druknummer}e druk — {druk.oplage.toLocaleString('nl-NL')} ex
-      </h4>
-
+    <div className="space-y-3">
       {CATEGORIE_CONFIG.map((cat, idx) => {
         const items = kostenposten.filter(kp => kp.categorie === cat.key);
         const subtotal = items.reduce((sum, kp) => sum + kp.bedrag, 0);
@@ -300,26 +283,6 @@ function DrukKostenBlock({
   );
 }
 
-/* ───── main component ───── */
-
-export function KostenpostenSection({ titelInput, updateField }: Props) {
-  const drukken = titelInput.drukken ?? [];
-
-  const updateDruk = (idx: number, updated: DrukConfig) => {
-    const next = drukken.map((d, i) => (i === idx ? updated : d));
-    updateField('drukken', next);
-  };
-
-  return (
-    <div className="space-y-4">
-      {drukken.map((druk, idx) => (
-        <DrukKostenBlock
-          key={idx}
-          druk={druk}
-          onDrukChange={updated => updateDruk(idx, updated)}
-          isFirst={idx === 0}
-        />
-      ))}
-    </div>
-  );
-}
+/* KostenpostenSection (outer wrapper) is verwijderd — drukken worden nu
+ * individueel als Section gerenderd in CalculatieForm. Hergebruik
+ * DrukKostenBlock voor de inhoud van zo'n Section. */

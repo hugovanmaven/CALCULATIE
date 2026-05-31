@@ -21,15 +21,8 @@ export function WebshopKostenSection({ titelInput, updateField }: Props) {
         value={titelInput.transactiekosten_pct * 100}
         onChange={v => updateField('transactiekosten_pct', v / 100)}
         suffix="%"
-        step={0.5}
-        help="% van verkoopprijs incl BTW"
-      />
-      <NumberInput
-        label="CAC per ex"
-        value={titelInput.cac_per_ex}
-        onChange={v => updateField('cac_per_ex', v)}
-        prefix="€"
-        help="Customer Acquisition Cost"
+        step={0.1}
+        help="% van verkoopprijs incl BTW (Shopify ~0,2%)"
       />
     </div>
   );
