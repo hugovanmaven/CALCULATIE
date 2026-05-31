@@ -210,8 +210,10 @@ def health_storage():
         info["titel_names"] = sorted({
             v.get("titel_input", {}).get("titel", "?") for v in all_data.values()
         })
+        info["storage_backend"] = "postgres" if db_url.startswith("postgresql") else "sqlite"
     except Exception as exc:
         info["load_error"] = str(exc)
+        info["storage_backend"] = "ERROR"
 
     if storage.TITELS_FILE.exists():
         try:
@@ -486,15 +488,11 @@ def backup_import():
     if not isinstance(new_data, dict):
         abort(400, description="data moet een object zijn met titel-id's als sleutels")
 
+    count = storage.import_data(new_data, mode=mode)
     if mode == "replace":
-        storage.save_all(new_data)
-        return jsonify({"imported": len(new_data), "mode": "replace"})
-
-    # merge
-    current = storage.load_all()
-    current.update(new_data)
-    storage.save_all(current)
-    return jsonify({"imported": len(new_data), "total": len(current), "mode": "merge"})
+        return jsonify({"imported": count, "mode": "replace"})
+    total = len(storage.load_all())
+    return jsonify({"imported": count, "total": total, "mode": "merge"})
 
 
 @bp.route("/api/seed", methods=["POST"])

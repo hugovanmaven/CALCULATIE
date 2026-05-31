@@ -1,17 +1,20 @@
 """
-JSON file storage for calculatie titels — met vangrails:
+Storage-laag voor calculatie-titels.
 
-1. Atomic writes (write-to-tmp + rename) zodat een crash midden in save
-   niet een half-bestand achterlaat.
-2. Versioned backups: bij elke save wordt het oude bestand bewaard in
-   backups/. Laatste 30 versies blijven staan.
-3. Veilig laden: bij een corrupt JSON-bestand wordt het hernoemd
-   (niet weggegooid) zodat het later teruggezet kan worden.
-4. Schema-migratie: nieuwe velden krijgen automatisch defaults bij load.
+Implementatie: Postgres via SQLAlchemy (lokaal: SQLite fallback).
 
-Storage paden:
-- Railway: $RAILWAY_VOLUME_MOUNT_PATH (persistent volume)
-- Lokaal:  ./deploy/data/
+Interface ongewijzigd ten opzichte van de oude JSON-versie:
+- load_all() -> dict[str, dict]
+- get_titel(id) -> dict | None
+- save_titel(id, data) -> dict
+- delete_titel(id) -> bool
+- new_id() -> str
+
+Plus extra's voor migratie en backup-management.
+
+Backups (vangrails): bij elke save schrijven we een volledige JSON-dump
+naar /data/backups/. Dat is een extra safety net naast Railway's eigen
+Postgres-backups en handig bij debugging.
 """
 
 import json
@@ -19,6 +22,7 @@ import os
 import shutil
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 # Railway volume mount or local fallback
@@ -28,9 +32,9 @@ if _volume:
 else:
     DATA_DIR = Path(__file__).parent.parent / "data"
 
-TITELS_FILE = DATA_DIR / "calculatie_titels.json"
+TITELS_FILE = DATA_DIR / "calculatie_titels.json"  # legacy + migratie-bron
 BACKUP_DIR = DATA_DIR / "backups"
-MAX_BACKUPS = 30  # houd laatste 30 versies
+MAX_BACKUPS = 30
 
 
 def _ensure_dirs():
@@ -39,147 +43,124 @@ def _ensure_dirs():
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  SCHEMA MIGRATIE
+#  DB ↔ dict CONVERSIE
 # ──────────────────────────────────────────────────────────────────────
 
-def _migrate_titel(titel: dict) -> dict:
-    """Pas schema-migraties toe op één titel.
+# Scalar velden die in titel_input zitten (kolommen op de Titel-tabel)
+_SCALAR_FIELDS = [
+    "titel", "auteur", "isbn", "verschijningsdatum", "verschenen",
+    "verkoopprijs_incl_btw", "btw_percentage", "boekhandelskorting",
+    "transactiekosten_pct", "fulfillment_per_ex", "cac_per_ex",
+    "distributie_cb_per_ex",
+    "b2b_porto_per_ex", "b2b_korting_pct",
+    "auteur_winstdeling_pct", "auteur_voorschot",
+    "agent_pct", "agent_winstdeling_pct", "agent_voorschot",
+    "vertaler_pct", "vertaler_winstdeling_pct", "vertaler_voorschot",
+    "illustrator_pct", "illustrator_winstdeling_pct", "illustrator_voorschot",
+    "heeft_partner", "partner_naam", "partner_winstdeling_pct",
+    "overige_kosten_pct",
+]
 
-    Veilig om herhaaldelijk aan te roepen — alleen ontbrekende velden
-    krijgen defaults. Hernoemde velden worden hier opgevangen.
-    """
-    if not isinstance(titel, dict):
-        return titel
+# JSON-velden in titel_input
+_JSON_FIELDS = [
+    "drukken",
+    "auteur_royalty_staffel",
+    "agent_staffel",
+    "vertaler_staffel",
+    "illustrator_staffel",
+    "extra_derden",
+    "overige_kosten_items",
+]
 
-    ti = titel.get("titel_input")
-    if not isinstance(ti, dict):
-        return titel
 
-    # ── Nieuwe velden met defaults ──
-    ti.setdefault("auteur", "")
-    ti.setdefault("isbn", "")
-    ti.setdefault("verschijningsdatum", "")
-    ti.setdefault("verschenen", False)
-    ti.setdefault("btw_percentage", 0.09)
-    ti.setdefault("boekhandelskorting", 0.48)
-    ti.setdefault("transactiekosten_pct", 0.002)
-    ti.setdefault("fulfillment_per_ex", 4.50)
-    ti.setdefault("cac_per_ex", 0.0)
-    ti.setdefault("distributie_cb_per_ex", 1.10)
-    ti.setdefault("b2b_porto_per_ex", 0.0)
-    ti.setdefault("b2b_korting_pct", 0.0)
-    ti.setdefault("auteur_winstdeling_pct", 0.0)
-    ti.setdefault("auteur_royalty_staffel", [])
-    ti.setdefault("auteur_voorschot", 0)
-    for partij in ("agent", "vertaler", "illustrator"):
-        ti.setdefault(f"{partij}_pct", 0.0)
-        ti.setdefault(f"{partij}_staffel", [])
-        ti.setdefault(f"{partij}_winstdeling_pct", 0.0)
-        ti.setdefault(f"{partij}_voorschot", 0)
-    ti.setdefault("heeft_partner", False)
-    ti.setdefault("partner_naam", "")
-    ti.setdefault("partner_winstdeling_pct", 0.5)
-    ti.setdefault("overige_kosten_pct", 0.0)
-    ti.setdefault("overige_kosten_items", [])
-    ti.setdefault("extra_derden", [])
-    ti.setdefault("drukken", [])
+def _decimal_to_float(v):
+    """SQLAlchemy retourneert Decimal voor Numeric-kolommen; converteer naar float."""
+    if isinstance(v, Decimal):
+        return float(v)
+    return v
+
+
+def titel_to_dict(t) -> dict:
+    """Converteer Titel-row naar de dict-vorm die de Flask-routes verwachten."""
+    titel_input = {}
+    for f in _SCALAR_FIELDS:
+        titel_input[f] = _decimal_to_float(getattr(t, f))
+    for f in _JSON_FIELDS:
+        titel_input[f] = getattr(t, f) or []
+
+    return {
+        "titel_input": titel_input,
+        "verdeling_webshop": _decimal_to_float(t.verdeling_webshop),
+        "verdeling_retail": _decimal_to_float(t.verdeling_retail),
+        "verdeling_b2b": _decimal_to_float(t.verdeling_b2b),
+        "archived": bool(t.archived),
+    }
+
+
+def _apply_dict_to_titel(t, data: dict):
+    """Vul Titel-row met data uit de dict-vorm. Wijzigt t in-place."""
+    ti = data.get("titel_input", {}) or {}
+    for f in _SCALAR_FIELDS:
+        if f in ti:
+            setattr(t, f, ti[f])
+    for f in _JSON_FIELDS:
+        if f in ti:
+            setattr(t, f, ti[f])
 
     # Top-level velden
-    titel.setdefault("verdeling_webshop", 0.10)
-    titel.setdefault("verdeling_retail", 0.85)
-    titel.setdefault("verdeling_b2b", 0.05)
-    titel.setdefault("archived", False)
-
-    titel["titel_input"] = ti
-    return titel
-
-
-def _migrate_all(raw: dict) -> dict:
-    if not isinstance(raw, dict):
-        return {}
-    return {tid: _migrate_titel(t) for tid, t in raw.items()}
+    if "verdeling_webshop" in data:
+        t.verdeling_webshop = data["verdeling_webshop"]
+    if "verdeling_retail" in data:
+        t.verdeling_retail = data["verdeling_retail"]
+    if "verdeling_b2b" in data:
+        t.verdeling_b2b = data["verdeling_b2b"]
+    if "archived" in data:
+        t.archived = bool(data["archived"])
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  LOAD & SAVE
+#  STORAGE-API
 # ──────────────────────────────────────────────────────────────────────
 
 def load_all() -> dict:
-    """Laad alle titels met automatische schema-migratie.
-
-    Bij een corrupt JSON-bestand: hernoem naar .corrupt-<timestamp>
-    in plaats van weggooien, zodat de data herstelbaar blijft.
-    """
-    _ensure_dirs()
-    if not TITELS_FILE.exists():
-        return {}
-    try:
-        with open(TITELS_FILE, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except (json.JSONDecodeError, IOError) as exc:
-        # NIET stilletjes overschrijven — bewaar het kapotte bestand
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        corrupt_path = DATA_DIR / f"calculatie_titels.corrupt-{ts}.json"
-        try:
-            shutil.move(str(TITELS_FILE), str(corrupt_path))
-            print(f"[storage] WARNING: corrupt JSON, bewaard als {corrupt_path}: {exc}")
-        except OSError:
-            pass
-        return {}
-
-    return _migrate_all(raw)
-
-
-def _backup_current():
-    """Maak een timestamped backup van het huidige bestand."""
-    if not TITELS_FILE.exists():
-        return
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = BACKUP_DIR / f"calculatie_titels_{ts}.json"
-    try:
-        shutil.copy2(TITELS_FILE, backup_path)
-    except OSError as exc:
-        print(f"[storage] WARNING: backup mislukt: {exc}")
-        return
-    # Houd alleen de laatste MAX_BACKUPS
-    backups = sorted(BACKUP_DIR.glob("calculatie_titels_*.json"))
-    for old in backups[:-MAX_BACKUPS]:
-        try:
-            old.unlink()
-        except OSError:
-            pass
-
-
-def save_all(data: dict):
-    """Atomic write + backup van vorige versie."""
-    _ensure_dirs()
-    _backup_current()
-
-    # Atomic: schrijf naar tmp, dan rename
-    tmp = TITELS_FILE.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(str(tmp), str(TITELS_FILE))
+    """Laad alle titels als {id: dict, ...}."""
+    from .db import db, Titel
+    out = {}
+    for t in db.session.query(Titel).all():
+        out[t.id] = titel_to_dict(t)
+    return out
 
 
 def get_titel(titel_id: str) -> dict | None:
-    return load_all().get(titel_id)
+    from .db import db, Titel
+    t = db.session.get(Titel, titel_id)
+    return titel_to_dict(t) if t else None
 
 
 def save_titel(titel_id: str, titel_data: dict) -> dict:
-    all_data = load_all()
-    all_data[titel_id] = titel_data
-    save_all(all_data)
-    return titel_data
+    """Maak nieuw of update bestaande titel. Backupt vóór de write."""
+    from .db import db, Titel
+    _backup_current_to_json()
+
+    t = db.session.get(Titel, titel_id)
+    if t is None:
+        t = Titel(id=titel_id, titel="")
+        db.session.add(t)
+
+    _apply_dict_to_titel(t, titel_data)
+    db.session.commit()
+    return titel_to_dict(t)
 
 
 def delete_titel(titel_id: str) -> bool:
-    all_data = load_all()
-    if titel_id in all_data:
-        del all_data[titel_id]
-        save_all(all_data)
-        return True
-    return False
+    from .db import db, Titel
+    _backup_current_to_json()
+    t = db.session.get(Titel, titel_id)
+    if t is None:
+        return False
+    db.session.delete(t)
+    db.session.commit()
+    return True
 
 
 def new_id() -> str:
@@ -187,11 +168,96 @@ def new_id() -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────
-#  BACKUP / RESTORE HELPERS
+#  MIGRATIE: JSON → DB
 # ──────────────────────────────────────────────────────────────────────
 
+def migrate_from_json_if_needed():
+    """Als de DB leeg is én er staat een JSON-bestand, neem die mee over.
+
+    Veilig om herhaaldelijk aan te roepen — doet alleen iets als DB leeg is.
+    Na succesvolle migratie wordt het JSON-bestand hernoemd naar
+    .migrated zodat er geen verwarring ontstaat.
+    """
+    from .db import db, Titel
+    _ensure_dirs()
+
+    # Check: DB al gevuld?
+    if db.session.query(Titel).count() > 0:
+        return
+
+    # Check: JSON-bestand aanwezig?
+    if not TITELS_FILE.exists():
+        return
+
+    try:
+        with open(TITELS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError) as exc:
+        print(f"[storage] WARNING: migratie overgeslagen, JSON onleesbaar: {exc}")
+        return
+
+    if not isinstance(data, dict) or not data:
+        return
+
+    print(f"[storage] Migratie: {len(data)} titels overzetten uit {TITELS_FILE}")
+    count = 0
+    for tid, titel_data in data.items():
+        if not isinstance(titel_data, dict):
+            continue
+        try:
+            t = Titel(id=tid)
+            _apply_dict_to_titel(t, titel_data)
+            db.session.add(t)
+            count += 1
+        except Exception as exc:
+            print(f"[storage] WARNING: titel {tid} skip ({exc})")
+
+    db.session.commit()
+    print(f"[storage] Migratie klaar: {count} titels in DB")
+
+    # Hernoem JSON zodat het niet nog een keer wordt geprobeerd
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        TITELS_FILE.rename(DATA_DIR / f"calculatie_titels.migrated-{ts}.json")
+    except OSError as exc:
+        print(f"[storage] WARNING: hernoemen JSON mislukt: {exc}")
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  BACKUP / RESTORE
+# ──────────────────────────────────────────────────────────────────────
+
+def _backup_current_to_json():
+    """Dump huidige DB-state als JSON-bestand. Houd laatste 30 versies."""
+    try:
+        _ensure_dirs()
+        from .db import db, Titel
+
+        snapshot = {}
+        for t in db.session.query(Titel).all():
+            snapshot[t.id] = titel_to_dict(t)
+
+        if not snapshot:
+            return  # niets om te backuppen
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = BACKUP_DIR / f"calculatie_titels_{ts}.json"
+        with open(backup_path, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, ensure_ascii=False, indent=2)
+
+        # Houd alleen laatste MAX_BACKUPS
+        backups = sorted(BACKUP_DIR.glob("calculatie_titels_*.json"))
+        for old in backups[:-MAX_BACKUPS]:
+            try:
+                old.unlink()
+            except OSError:
+                pass
+    except Exception as exc:
+        # Backup-fout mag de save niet stuk maken
+        print(f"[storage] WARNING: backup mislukt: {exc}")
+
+
 def list_backups() -> list[dict]:
-    """Lijst van beschikbare backups (nieuwste eerst)."""
     _ensure_dirs()
     backups = sorted(BACKUP_DIR.glob("calculatie_titels_*.json"), reverse=True)
     out = []
@@ -209,10 +275,55 @@ def list_backups() -> list[dict]:
 
 
 def restore_backup(name: str) -> bool:
-    """Restore een specifieke backup over de huidige data."""
+    """Restore een eerdere JSON-backup over de huidige DB heen.
+
+    Maakt eerst een backup van de huidige state.
+    """
+    from .db import db, Titel
     path = BACKUP_DIR / name
     if not path.exists() or not path.name.startswith("calculatie_titels_"):
         return False
-    _backup_current()  # bewaar de huidige als backup voor we 'm overschrijven
-    shutil.copy2(path, TITELS_FILE)
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return False
+    if not isinstance(data, dict):
+        return False
+
+    _backup_current_to_json()
+
+    # Volledig vervangen: delete + insert
+    db.session.query(Titel).delete()
+    for tid, titel_data in data.items():
+        if not isinstance(titel_data, dict):
+            continue
+        t = Titel(id=tid)
+        _apply_dict_to_titel(t, titel_data)
+        db.session.add(t)
+    db.session.commit()
     return True
+
+
+def import_data(new_data: dict, mode: str = "merge") -> int:
+    """Importeer titels uit een dict. Retourneert aantal geïmporteerd."""
+    from .db import db, Titel
+    _backup_current_to_json()
+
+    if mode == "replace":
+        db.session.query(Titel).delete()
+
+    count = 0
+    for tid, titel_data in new_data.items():
+        if not isinstance(titel_data, dict):
+            continue
+        t = db.session.get(Titel, tid)
+        if t is None:
+            t = Titel(id=tid)
+            db.session.add(t)
+        _apply_dict_to_titel(t, titel_data)
+        count += 1
+
+    db.session.commit()
+    return count
