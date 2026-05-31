@@ -11,9 +11,30 @@ Op Postgres gebruikt SQLAlchemy automatisch JSONB voor de JSON-kolommen.
 from datetime import datetime
 
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Column, String, Text, Boolean, Numeric, DateTime, JSON
+from sqlalchemy import Column, String, Text, Boolean, Numeric, DateTime, JSON, ForeignKey
+from sqlalchemy.orm import relationship
 
 db = SQLAlchemy()
+
+
+class Titelgroep(db.Model):
+    """Een titelgroep bundelt meerdere ISBN's onder één 'merk' / 'exploitatie'.
+
+    Voorbeeld: DRIVE bestaat als paperback, hardcover, e-book en audioboek
+    — elk eigen ISBN en eigen calculatie, maar samen één 'titel' voor het
+    publiek en voor cross-format omzet- en voorschotrapportage.
+    """
+
+    __tablename__ = "titelgroepen"
+
+    id = Column(String(36), primary_key=True)
+    naam = Column(Text, nullable=False, default="")
+    beschrijving = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Reverse relatie naar titels in deze groep
+    titels = relationship("Titel", back_populates="titelgroep", lazy="select")
 
 
 class Titel(db.Model):
@@ -27,8 +48,9 @@ class Titel(db.Model):
     verschijningsdatum = Column(Text, default="")  # ISO-string (optional)
     verschenen = Column(Boolean, default=False)
 
-    # Future: titelgroep-laag
-    titelgroep_id = Column(String(36), nullable=True, index=True)
+    # Optionele koppeling aan een titelgroep (DRIVE → 4 ISBN's)
+    titelgroep_id = Column(String(36), ForeignKey("titelgroepen.id", ondelete="SET NULL"), nullable=True, index=True)
+    titelgroep = relationship("Titelgroep", back_populates="titels")
 
     # ── Basisprijzen ──
     verkoopprijs_incl_btw = Column(Numeric(10, 4), default=0)

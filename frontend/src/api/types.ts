@@ -192,6 +192,7 @@ export interface StoredTitel {
   verdeling_retail: number;
   verdeling_b2b: number;
   archived?: boolean;
+  titelgroep_id?: string | null;
 }
 
 export interface TitelListItem {
@@ -202,6 +203,14 @@ export interface TitelListItem {
   drukken_count: number;
   gewogen_marge_pct: number | null;
   archived: boolean;
+  titelgroep_id?: string | null;
+}
+
+export interface Titelgroep {
+  id: string;
+  naam: string;
+  beschrijving?: string;
+  titel_count?: number;
 }
 
 export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [

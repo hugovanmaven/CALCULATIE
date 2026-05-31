@@ -378,6 +378,7 @@ def list_titels():
             "drukken_count": len(ti.get("drukken", [])),
             "gewogen_marge_pct": gewogen_marge,
             "archived": archived,
+            "titelgroep_id": tdata.get("titelgroep_id"),
         })
     return jsonify(items)
 
@@ -401,6 +402,7 @@ def save_titel():
         "verdeling_webshop": data.get("verdeling_webshop", 0.10),
         "verdeling_retail": data.get("verdeling_retail", 0.85),
         "verdeling_b2b": data.get("verdeling_b2b", 0.05),
+        "titelgroep_id": data.get("titelgroep_id"),
     }
 
     storage.save_titel(titel_id, titel_data)
@@ -432,6 +434,45 @@ def unarchive_titel(titel_id):
     data["archived"] = False
     storage.save_titel(titel_id, data)
     return jsonify(ok=True)
+
+
+# ── Titelgroepen CRUD ──
+
+@bp.route("/api/titelgroepen", methods=["GET"])
+def list_titelgroepen_route():
+    return jsonify(storage.list_titelgroepen())
+
+
+@bp.route("/api/titelgroepen/<groep_id>", methods=["GET"])
+def get_titelgroep_route(groep_id):
+    with_titels = request.args.get("with_titels") == "true"
+    data = storage.get_titelgroep(groep_id, with_titels=with_titels)
+    if data is None:
+        abort(404, description="Titelgroep niet gevonden")
+    return jsonify(data)
+
+
+@bp.route("/api/titelgroepen", methods=["POST"])
+def create_titelgroep_route():
+    data = request.get_json() or {}
+    if not data.get("naam"):
+        abort(400, description="naam is verplicht")
+    return jsonify(storage.save_titelgroep(None, data))
+
+
+@bp.route("/api/titelgroepen/<groep_id>", methods=["PUT", "PATCH"])
+def update_titelgroep_route(groep_id):
+    data = request.get_json() or {}
+    if storage.get_titelgroep(groep_id) is None:
+        abort(404, description="Titelgroep niet gevonden")
+    return jsonify(storage.save_titelgroep(groep_id, data))
+
+
+@bp.route("/api/titelgroepen/<groep_id>", methods=["DELETE"])
+def delete_titelgroep_route(groep_id):
+    if storage.delete_titelgroep(groep_id):
+        return jsonify(ok=True)
+    abort(404, description="Titelgroep niet gevonden")
 
 
 @bp.route("/api/backup/export", methods=["GET"])

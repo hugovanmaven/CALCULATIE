@@ -10,6 +10,7 @@ export interface TitelDetailState {
   id: string | null;
   titelInput: TitelInput;
   verdeling: { webshop: number; retail: number; b2b: number };
+  titelgroepId: string | null;
   dirty: boolean;
 }
 
@@ -49,6 +50,7 @@ function newTitelState(): TitelDetailState {
     id: null,
     titelInput: { ...DEFAULT_TITEL_INPUT, drukken: [{ ...DEFAULT_DRUK }] },
     verdeling: { webshop: 0.10, retail: 0.90, b2b: 0.00 },
+    titelgroepId: null,
     dirty: false,
   };
 }
@@ -91,6 +93,7 @@ export function useTitelDetail(titelId: string | null) {
           retail: st.verdeling_retail ?? 0.85,
           b2b: st.verdeling_b2b ?? 0.05,
         },
+        titelgroepId: st.titelgroep_id ?? null,
         dirty: false,
       });
     } catch (e) {
@@ -118,6 +121,7 @@ export function useTitelDetail(titelId: string | null) {
         verdeling_webshop: s.verdeling.webshop,
         verdeling_retail: s.verdeling.retail,
         verdeling_b2b: s.verdeling.b2b,
+        titelgroep_id: s.titelgroepId,
       });
       setState(prev => prev.id === s.id || (!prev.id && !s.id)
         ? { ...prev, id: saved.id, dirty: false }
@@ -176,11 +180,17 @@ export function useTitelDetail(titelId: string | null) {
     setState(prev => ({ ...prev, verdeling: v, dirty: true }));
   }, []);
 
+  const setTitelgroepId = useCallback((id: string | null) => {
+    setState(prev => ({ ...prev, titelgroepId: id, dirty: true }));
+  }, []);
+
   return {
     titelInput: state.titelInput,
     updateField,
     verdeling: state.verdeling,
     setVerdeling,
+    titelgroepId: state.titelgroepId,
+    setTitelgroepId,
     dirty: state.dirty,
     id: state.id,
     loaded,

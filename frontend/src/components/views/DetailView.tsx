@@ -13,6 +13,7 @@ export default function DetailView({ titelId, onBack }: Props) {
   const {
     titelInput, updateField,
     verdeling, setVerdeling,
+    titelgroepId, setTitelgroepId,
     dirty, loaded,
     results, cacSens, priceSens, oplageSim, loading,
   } = useTitelDetail(titelId);
@@ -88,6 +89,8 @@ export default function DetailView({ titelId, onBack }: Props) {
               updateField={updateField}
               verdeling={verdeling}
               setVerdeling={setVerdeling}
+              titelgroepId={titelgroepId}
+              setTitelgroepId={setTitelgroepId}
             />
           </div>
         </div>

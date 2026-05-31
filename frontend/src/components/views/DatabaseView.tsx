@@ -1,5 +1,6 @@
-import { useState, useMemo, useRef } from 'react';
-import type { TitelListItem } from '../../api/types';
+import { useState, useMemo, useRef, useEffect } from 'react';
+import type { TitelListItem, Titelgroep } from '../../api/types';
+import { listTitelgroepen } from '../../api/client';
 import { Search, Plus, Trash2, Archive, ArchiveRestore, Upload, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Props {
@@ -39,7 +40,18 @@ export default function DatabaseView({
   const [sortKey, setSortKey] = useState<'titel' | 'auteur' | 'gewogen_marge_pct'>('titel');
   const [sortAsc, setSortAsc] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [groepen, setGroepen] = useState<Titelgroep[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    listTitelgroepen().then(setGroepen).catch(() => {});
+  }, [items.length]);
+
+  const groepNaam = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of groepen) map.set(g.id, g.naam);
+    return (id?: string | null) => (id ? map.get(id) : undefined);
+  }, [groepen]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -254,7 +266,14 @@ export default function DatabaseView({
                         />
                       </td>
                       <td className="px-3 py-3">
-                        <div className="font-medium text-[var(--text-primary)]">{item.titel || 'Naamloze titel'}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-[var(--text-primary)]">{item.titel || 'Naamloze titel'}</span>
+                          {groepNaam(item.titelgroep_id) && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-600/20">
+                              {groepNaam(item.titelgroep_id)}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-[var(--text-tertiary)] sm:hidden mt-0.5">{item.auteur}</div>
                       </td>
                       <td className="px-3 py-3 text-[var(--text-secondary)] hidden sm:table-cell">{item.auteur}</td>
