@@ -189,6 +189,9 @@ def health_storage():
         "data_dir": str(storage.DATA_DIR),
         "titels_file": str(storage.TITELS_FILE),
         "titels_file_exists": storage.TITELS_FILE.exists(),
+        "railway_env_vars": {k: v for k, v in _os.environ.items() if k.startswith("RAILWAY_")},
+        "data_mount_exists": _os.path.exists("/data"),
+        "data_mount_writable": _os.access("/data", _os.W_OK) if _os.path.exists("/data") else False,
     }
     try:
         all_data = storage.load_all()
