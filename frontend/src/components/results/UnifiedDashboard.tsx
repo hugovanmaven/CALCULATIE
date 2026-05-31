@@ -2,11 +2,12 @@ import { useState } from 'react';
 import type { CalculateResponse, TitelInput, SensitivityResponse, OplageSimResponse } from '../../api/types';
 import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 
-// Streefmarges per kanaal: webshop hoger omdat de volle verkoopprijs binnenkomt
-// en CAC/fulfillment de marge anders verbergen; retail en B2B op 35%.
+// Streefmarge: 35% van wat er na kortingen + BTW binnenkomt (netto-omzet).
+// Voor de kanaal-tiles wordt deze regel intern omgerekend naar VKP-ex-BTW
+// basis zodat de drie getallen direct vergelijkbaar zijn.
 const STREEFMARGE = {
   retail: 0.35,
-  webshop: 0.40,
+  webshop: 0.35,
   b2b: 0.35,
   gewogen: 0.35,
 } as const;
@@ -19,13 +20,6 @@ interface Props {
   cacSens: SensitivityResponse[] | null;
   priceSens: SensitivityResponse[] | null;
   oplageSim: OplageSimResponse | null;
-}
-
-function margeBadge(pct: number, kanaal: KanaalSleutel = 'gewogen'): string {
-  const target = STREEFMARGE[kanaal];
-  if (pct >= target) return 'bg-emerald-50 text-emerald-700 ring-emerald-600/20';
-  if (pct >= 0.20) return 'bg-amber-50 text-amber-700 ring-amber-600/20';
-  return 'bg-red-50 text-red-700 ring-red-600/20';
 }
 
 function margeColor(pct: number, kanaal: KanaalSleutel = 'gewogen'): string {
@@ -162,22 +156,36 @@ function KanaalCards({ druk, verdeling }: { druk: any; verdeling: { webshop: num
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      {kanalen.map(k => (
+      {kanalen.map(k => {
+        // Marge per kanaal getoond t.o.v. verkoopprijs ex BTW (één gemeenschappelijke noemer
+        // over alle kanalen, zodat absolute waarde direct vergelijkbaar is).
+        // Streefmarge is 35% van de netto-omzet van dat kanaal — uitgedrukt in
+        // verkoopprijs-ex-BTW-eenheden wordt dat 0,35 × (netto_omzet / VKP_ex_btw).
+        const vkpExBtw = k.data.verkoopprijs_ex_btw || k.data.netto_omzet;
+        const margeOpVkp = vkpExBtw > 0 ? k.data.netto_winst_maven / vkpExBtw : 0;
+        const streefOpVkp = vkpExBtw > 0 ? STREEFMARGE.gewogen * (k.data.netto_omzet / vkpExBtw) : 0;
+        const cls = margeOpVkp >= streefOpVkp
+          ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
+          : margeOpVkp >= streefOpVkp * 0.6
+          ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
+          : 'bg-red-50 text-red-700 ring-red-600/20';
+        return (
         <div key={k.key} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide">{k.label}</span>
             <span className="text-[10px] text-[var(--text-tertiary)]">{(k.pct * 100).toFixed(0)}%</span>
           </div>
           <div className="text-2xl font-bold text-[var(--text-primary)] mb-1.5 tabular-nums">&euro; {fmt(k.data.netto_winst_maven)}</div>
-          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset ${margeBadge(k.data.marge_pct, k.key as KanaalSleutel)}`}>
-            {pct(k.data.marge_pct)} marge <span className="opacity-60 ml-1">/ streef {pct(STREEFMARGE[k.key as KanaalSleutel])}</span>
+          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset ${cls}`}>
+            {pct(margeOpVkp)} marge <span className="opacity-60 ml-1">/ streef {pct(streefOpVkp)}</span>
           </span>
           <div className="mt-3 text-[11px] text-[var(--text-tertiary)] space-y-0.5">
             <div className="flex justify-between"><span>Netto omzet</span><span className="tabular-nums">&euro; {fmt(k.data.netto_omzet)}</span></div>
             <div className="flex justify-between"><span>Brutowinst</span><span className="tabular-nums">&euro; {fmt(k.data.brutowinst)}</span></div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -415,7 +423,7 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
 
   const lines: { label: string; value: number; type?: 'subtotal' | 'info' }[] = [
     { label: 'Verkoopprijs ex BTW', value: v('verkoopprijs_ex_btw') },
-    { label: 'Boekhandelskorting', value: -v('korting_bedrag') },
+    { label: activeTab === 'retail' || activeTab === 'gemiddelde' ? 'Boekhandelskorting' : 'Korting', value: -v('korting_bedrag') },
     { label: 'Netto omzet', value: v('netto_omzet'), type: 'subtotal' },
     { label: 'Drukkosten /ex', value: -v('drukkosten') },
     { label: 'Kostenposten /ex', value: -v('kosten_per_ex') },
