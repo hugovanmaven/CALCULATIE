@@ -184,6 +184,15 @@ def health_storage():
     """
     import os as _os
     from datetime import datetime as _dt
+    db_url = _os.environ.get("DATABASE_URL", "")
+    # Maskeer wachtwoord uit DATABASE_URL voor de respons
+    db_url_safe = db_url
+    if "@" in db_url and "://" in db_url:
+        scheme, rest = db_url.split("://", 1)
+        if "@" in rest:
+            creds, host = rest.split("@", 1)
+            db_url_safe = f"{scheme}://***:***@{host}"
+
     info: dict = {
         "volume_mount_path_env": _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or None,
         "data_dir": str(storage.DATA_DIR),
@@ -192,6 +201,8 @@ def health_storage():
         "railway_env_vars": {k: v for k, v in _os.environ.items() if k.startswith("RAILWAY_")},
         "data_mount_exists": _os.path.exists("/data"),
         "data_mount_writable": _os.access("/data", _os.W_OK) if _os.path.exists("/data") else False,
+        "database_url_set": bool(db_url),
+        "database_url_safe": db_url_safe or None,
     }
     try:
         all_data = storage.load_all()
