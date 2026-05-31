@@ -175,6 +175,59 @@ def health():
     return jsonify(status="ok")
 
 
+@bp.route("/api/health/storage")
+def health_storage():
+    """Diagnose-endpoint voor storage-gezondheid.
+
+    Antwoord op: zit er een persistent volume? Hoeveel titels en backups?
+    Wanneer was de laatste write? Zo kan een wipe sneller worden opgemerkt.
+    """
+    import os as _os
+    from datetime import datetime as _dt
+    info: dict = {
+        "volume_mount_path_env": _os.environ.get("RAILWAY_VOLUME_MOUNT_PATH") or None,
+        "data_dir": str(storage.DATA_DIR),
+        "titels_file": str(storage.TITELS_FILE),
+        "titels_file_exists": storage.TITELS_FILE.exists(),
+    }
+    try:
+        all_data = storage.load_all()
+        info["titels_count"] = len(all_data)
+        info["titel_names"] = sorted({
+            v.get("titel_input", {}).get("titel", "?") for v in all_data.values()
+        })
+    except Exception as exc:
+        info["load_error"] = str(exc)
+
+    if storage.TITELS_FILE.exists():
+        try:
+            stat = storage.TITELS_FILE.stat()
+            info["titels_file_size"] = stat.st_size
+            info["titels_file_modified"] = _dt.fromtimestamp(stat.st_mtime).isoformat()
+        except OSError as exc:
+            info["stat_error"] = str(exc)
+
+    try:
+        backups = storage.list_backups()
+        info["backups_count"] = len(backups)
+        if backups:
+            info["latest_backup"] = backups[0]
+            info["oldest_backup"] = backups[-1]
+            info["max_backup_size"] = max(b["size"] for b in backups)
+    except Exception as exc:
+        info["backup_error"] = str(exc)
+
+    # Eventuele .corrupt-bestanden tonen (geeft signaal dat er ooit
+    # iets fout ging en data via die fallback is gered)
+    try:
+        corrupt = sorted(storage.DATA_DIR.glob("*.corrupt-*"))
+        info["corrupt_files"] = [c.name for c in corrupt]
+    except Exception:
+        info["corrupt_files"] = []
+
+    return jsonify(info)
+
+
 @bp.route("/api/calculate", methods=["POST"])
 def calculate():
     data = request.get_json()
