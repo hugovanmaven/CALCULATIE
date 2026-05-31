@@ -40,6 +40,9 @@ class DrukConfig:
     oplage: int
     drukkosten_per_ex: float
     kostenposten: list[KostenPost] = field(default_factory=list)
+    # CAC per druk: gemiddelde online-ad-uitgave per webshop-aankoop voor
+    # deze druk. Komt vrijwel altijd uit een nieuwe campagne per druk.
+    cac_per_ex: float = 0.0
 
 
 @dataclass
@@ -213,6 +216,7 @@ def bereken_kanaal(
     cumulatief_verkocht: int,
     oplage: int,
     drukkosten_per_ex: float,
+    cac_per_ex: float = 0.0,
 ) -> KanaalResultaat:
     """Bereken de marge voor één kanaal van één druk."""
     r = KanaalResultaat(kanaal=kanaal)
@@ -237,7 +241,7 @@ def bereken_kanaal(
     if kanaal == "webshop":
         r.fulfillment = t.fulfillment_per_ex
         r.transactiekosten = t.verkoopprijs_incl_btw * t.transactiekosten_pct
-        r.cac = t.cac_per_ex
+        r.cac = cac_per_ex
     elif kanaal == "retail":
         r.distributie_cb = t.distributie_cb_per_ex
     elif kanaal == "b2b":
@@ -345,6 +349,9 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
             kosten_totaal=kosten_totaal,
             drukkosten_totaal=druk_cfg.drukkosten_per_ex * oplage,
         )
+        # CAC: nieuwe locatie is per druk; valt terug op titel-level voor
+        # backward compat met oude data die nog niet gemigreerd is.
+        druk_cac = druk_cfg.cac_per_ex if druk_cfg.cac_per_ex else t.cac_per_ex
         for kanaal in ["webshop", "retail", "b2b"]:
             result = bereken_kanaal(
                 t, kanaal,
@@ -352,6 +359,7 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
                 cumulatief_verkocht=cumulatief,
                 oplage=oplage,
                 drukkosten_per_ex=druk_cfg.drukkosten_per_ex,
+                cac_per_ex=druk_cac,
             )
             setattr(druk, kanaal, result)
         res.drukken.append(druk)

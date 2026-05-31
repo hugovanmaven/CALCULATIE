@@ -9,13 +9,21 @@ function generateId(): string {
   return 'custom_' + Math.random().toString(36).slice(2, 9);
 }
 
-const CATEGORIE_CONFIG: {
-  key: KostenPost['categorie'];
-  label: string;
-}[] = [
+type CategorieConfig = { key: KostenPost['categorie']; label: string };
+
+const CATEGORIE_CONFIG: CategorieConfig[] = [
   { key: 'productie', label: 'Productie' },
   { key: 'offline_marketing', label: 'Offline marketing' },
   { key: 'online_marketing', label: 'Online marketing' },
+];
+
+export const PRODUCTIE_CATEGORIES: CategorieConfig[] = [
+  { key: 'productie', label: 'Productie' },
+];
+
+export const MARKETING_CATEGORIES: CategorieConfig[] = [
+  { key: 'offline_marketing', label: 'Offline' },
+  { key: 'online_marketing', label: 'Online' },
 ];
 
 function formatEuro(n: number): string {
@@ -154,9 +162,13 @@ function CategorieGroep({
 export function DrukKostenBlock({
   druk,
   onDrukChange,
+  categorieën = CATEGORIE_CONFIG,
+  totaalLabel = 'Totaal kosten deze druk',
 }: {
   druk: DrukConfig;
   onDrukChange: (updated: DrukConfig) => void;
+  categorieën?: CategorieConfig[];
+  totaalLabel?: string;
 }) {
   const [addingTo, setAddingTo] = useState<KostenPost['categorie'] | null>(null);
   const [newNaam, setNewNaam] = useState('');
@@ -195,19 +207,25 @@ export function DrukKostenBlock({
     setAddingTo(null);
   };
 
-  const kostenTotaal = kostenposten.reduce((s, kp) => s + kp.bedrag, 0);
-  const drukkostenTotaal = druk.drukkosten_per_ex * druk.oplage;
+  const shownKeys = new Set(categorieën.map(c => c.key));
+  const includesProductie = shownKeys.has('productie');
+  const kostenTotaal = kostenposten
+    .filter(kp => shownKeys.has(kp.categorie))
+    .reduce((s, kp) => s + kp.bedrag, 0);
+  const drukkostenTotaal = includesProductie ? druk.drukkosten_per_ex * druk.oplage : 0;
   const totaal = kostenTotaal + drukkostenTotaal;
 
   return (
     <div className="space-y-3">
-      {CATEGORIE_CONFIG.map((cat, idx) => {
+      {categorieën.map((cat, idx) => {
         const items = kostenposten.filter(kp => kp.categorie === cat.key);
         const subtotal = items.reduce((sum, kp) => sum + kp.bedrag, 0);
 
-        // Drukkosten-rij wordt vooraan in de productie-categorie getoond
-        const leadingRow =
-          cat.key === 'productie' ? (
+        // Drukkosten-rij wordt vooraan in de productie-categorie getoond.
+        // Voor online marketing: CAC per webshop-aankoop (per-ex variabel).
+        let leadingRow: React.ReactNode = null;
+        if (cat.key === 'productie') {
+          leadingRow = (
             <div className="grid grid-cols-2 gap-x-3">
               <KostenRij
                 label="Drukkosten per exemplaar"
@@ -217,7 +235,20 @@ export function DrukKostenBlock({
                 suffix="/ex"
               />
             </div>
-          ) : null;
+          );
+        } else if (cat.key === 'online_marketing') {
+          leadingRow = (
+            <div className="grid grid-cols-2 gap-x-3">
+              <KostenRij
+                label="CAC per webshop-aankoop"
+                bedrag={druk.cac_per_ex ?? 0}
+                onBedragChange={v => onDrukChange({ ...druk, cac_per_ex: v })}
+                step={0.5}
+                suffix="/ex"
+              />
+            </div>
+          );
+        }
 
         const displaySubtotal =
           cat.key === 'productie' ? subtotal + drukkostenTotaal : subtotal;
@@ -276,7 +307,7 @@ export function DrukKostenBlock({
       {/* Divider + totaal */}
       <div className="h-px bg-[var(--border)]" />
       <div className="flex justify-between text-sm font-bold text-[var(--text-primary)]">
-        <span>Totaal kosten deze druk</span>
+        <span>{totaalLabel}</span>
         <span className="tabular-nums">&euro; {formatEuro(totaal)}</span>
       </div>
     </div>

@@ -93,7 +93,15 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
       )}
 
       {cacSens && cacSens.length > 0 && verdeling.webshop > 0 && (
-        <CacBandbreedte cacSens={cacSens} currentCac={titelInput.cac_per_ex} />
+        <CacBandbreedte cacSens={cacSens} currentCac={
+          (() => {
+            // CAC zit per druk; toon de bandbreedte voor de laatste druk
+            // (uitgaande dat eerdere drukken zijn uitverkocht).
+            const dr = titelInput.drukken ?? [];
+            const last = dr.length > 0 ? dr[dr.length - 1] : null;
+            return last?.cac_per_ex ?? titelInput.cac_per_ex ?? 0;
+          })()
+        } />
       )}
       {priceSens && priceSens.length > 0 && (
         <VerkoopprijsAdvies priceSens={priceSens} currentPrice={titelInput.verkoopprijs_incl_btw} />
@@ -259,7 +267,10 @@ function OplageSimulatie({ sim }: { sim: OplageSimResponse }) {
 }
 
 function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[]; currentCac: number }) {
-  const sens = cacSens[0];
+  // Toon de bandbreedte voor de LAATSTE druk — uitgangspunt is dat
+  // eerdere drukken zijn uitverkocht en de campagne nu de huidige
+  // druk pusht.
+  const sens = cacSens[cacSens.length - 1];
   if (!sens || !sens.rows.length) return null;
 
   // Dynamic range centered on currentCac, step size depends on magnitude
@@ -278,7 +289,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
   return (
     <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4">
       <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-1">
-        CAC bandbreedte <span className="font-normal text-[var(--text-tertiary)]">(webshop)</span>
+        CAC bandbreedte <span className="font-normal text-[var(--text-tertiary)]">({sens.druk_type ?? 'webshop'})</span>
       </h3>
       <p className="text-xs text-[var(--text-tertiary)] mb-3">Kosten om 1 klant te werven via online ads</p>
       <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">

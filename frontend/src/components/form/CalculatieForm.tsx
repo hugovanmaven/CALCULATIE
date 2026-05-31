@@ -2,8 +2,7 @@ import type { TitelInput, DrukConfig } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
 import { TitelgroepPicker } from './TitelgroepPicker';
-import { DrukKostenBlock } from './KostenpostenSection';
-import { MarketingSection } from './MarketingSection';
+import { DrukKostenBlock, PRODUCTIE_CATEGORIES, MARKETING_CATEGORIES } from './KostenpostenSection';
 import { WebshopKostenSection } from './WebshopKostenSection';
 import { RetailKostenSection } from './RetailKostenSection';
 import { B2bKostenSection } from './B2bKostenSection';
@@ -54,26 +53,43 @@ export function CalculatieForm({
         </div>
       </Section>
 
-      {/* ─── PRODUCTIE & KOSTEN — Section per druk ─── */}
-      <GroupLabel>Productie &amp; kosten</GroupLabel>
+      {/* ─── PRODUCTIE — Section per druk ─── */}
+      <GroupLabel>Productie</GroupLabel>
 
       {drukken.map((druk, idx) => (
         <Section
-          key={idx}
+          key={`prod-${idx}`}
           title={`${druk.druknummer}e druk`}
           subtitle={`${druk.oplage.toLocaleString('nl-NL')} ex`}
           defaultOpen={idx === 0}
         >
-          <DrukKostenBlock druk={druk} onDrukChange={updated => updateDruk(idx, updated)} />
+          <DrukKostenBlock
+            druk={druk}
+            onDrukChange={updated => updateDruk(idx, updated)}
+            categorieën={PRODUCTIE_CATEGORIES}
+            totaalLabel="Totaal productie deze druk"
+          />
         </Section>
       ))}
 
-      {/* ─── MARKETING ─── */}
+      {/* ─── MARKETING — Section per druk (incl. CAC) ─── */}
       <GroupLabel>Marketing</GroupLabel>
 
-      <Section title="Acquisitiekosten (CAC)">
-        <MarketingSection titelInput={titelInput} updateField={updateField} />
-      </Section>
+      {drukken.map((druk, idx) => (
+        <Section
+          key={`mkt-${idx}`}
+          title={`Campagne ${druk.druknummer}e druk`}
+          subtitle={`${druk.oplage.toLocaleString('nl-NL')} ex`}
+          defaultOpen={idx === 0}
+        >
+          <DrukKostenBlock
+            druk={druk}
+            onDrukChange={updated => updateDruk(idx, updated)}
+            categorieën={MARKETING_CATEGORIES}
+            totaalLabel="Totaal campagne"
+          />
+        </Section>
+      ))}
 
       {/* ─── VERKOOPKANALEN ─── */}
       <GroupLabel>Verkoopkanalen</GroupLabel>

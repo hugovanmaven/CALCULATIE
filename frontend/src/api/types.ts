@@ -31,6 +31,7 @@ export interface DrukConfig {
   oplage: number;
   drukkosten_per_ex: number;
   kostenposten: KostenPost[];
+  cac_per_ex?: number;
 }
 
 export interface TitelInput {
@@ -221,6 +222,7 @@ export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [
   { id: 'persklaarmaken', naam: 'Persklaarmaken', categorie: 'productie', bedrag: 0 },
   { id: 'correctie', naam: 'Correctie', categorie: 'productie', bedrag: 0 },
   { id: 'freelance_redactie', naam: 'Freelance redactie', categorie: 'productie', bedrag: 0 },
+  { id: 'vertaling', naam: 'Vertaling', categorie: 'productie', bedrag: 0 },
   { id: 'ebook_productie', naam: 'E-book productie', categorie: 'productie', bedrag: 0 },
   { id: 'audiobook_productie', naam: 'Audiobook productie', categorie: 'productie', bedrag: 0 },
   // Offline marketing
@@ -239,6 +241,7 @@ export const DEFAULT_DRUK: DrukConfig = {
   oplage: 2000,
   drukkosten_per_ex: 1.20,
   kostenposten: [...DEFAULT_KOSTENPOSTEN],
+  cac_per_ex: 0,
 };
 
 export const DEFAULT_TITEL_INPUT: TitelInput = {
