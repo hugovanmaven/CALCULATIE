@@ -88,6 +88,15 @@ def titel_to_dict(t) -> dict:
     for f in _JSON_FIELDS:
         titel_input[f] = getattr(t, f) or []
 
+    # Migratie on-the-fly: cac_per_ex verhuisde van titel-niveau naar druk-
+    # niveau. Drukken zonder eigen cac_per_ex krijgen de titel-waarde, zodat
+    # bestaande data zonder explicit migratie correct rekent.
+    titel_cac = titel_input.get("cac_per_ex") or 0
+    if titel_cac and isinstance(titel_input.get("drukken"), list):
+        for druk in titel_input["drukken"]:
+            if isinstance(druk, dict) and not druk.get("cac_per_ex"):
+                druk["cac_per_ex"] = titel_cac
+
     return {
         "titel_input": titel_input,
         "verdeling_webshop": _decimal_to_float(t.verdeling_webshop),

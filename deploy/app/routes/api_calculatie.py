@@ -46,6 +46,7 @@ def _drukken_list(items: list[dict]) -> list[DrukConfig]:
             oplage=d.get("oplage", 2000),
             drukkosten_per_ex=d.get("drukkosten_per_ex", 1.20),
             kostenposten=_kostenposten_list(d.get("kostenposten", [])),
+            cac_per_ex=d.get("cac_per_ex", 0.0),
         ))
     return result
 
@@ -258,7 +259,11 @@ def sensitivity_cac():
     results = []
 
     for cac_val in cac_range:
+        # CAC zit nu per druk; zet voor de sensitivity de CAC op ALLE drukken
+        # zodat elke druk in de respons consistent meebeweegt.
         data["titel_input"]["cac_per_ex"] = cac_val
+        for druk in data["titel_input"].get("drukken", []) or []:
+            druk["cac_per_ex"] = cac_val
         calc = run_calculation(data)
 
         for druk in calc["drukken"]:
