@@ -94,6 +94,7 @@ def titel_to_dict(t) -> dict:
         "verdeling_retail": _decimal_to_float(t.verdeling_retail),
         "verdeling_b2b": _decimal_to_float(t.verdeling_b2b),
         "archived": bool(t.archived),
+        "titelgroep_id": t.titelgroep_id,
     }
 
 
@@ -116,6 +117,10 @@ def _apply_dict_to_titel(t, data: dict):
         t.verdeling_b2b = data["verdeling_b2b"]
     if "archived" in data:
         t.archived = bool(data["archived"])
+    if "titelgroep_id" in data:
+        # None of "" → null
+        v = data["titelgroep_id"]
+        t.titelgroep_id = v if v else None
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -305,6 +310,75 @@ def restore_backup(name: str) -> bool:
     db.session.commit()
     return True
 
+
+# ──────────────────────────────────────────────────────────────────────
+#  TITELGROEPEN
+# ──────────────────────────────────────────────────────────────────────
+
+def titelgroep_to_dict(g, with_titels: bool = False) -> dict:
+    out = {
+        "id": g.id,
+        "naam": g.naam,
+        "beschrijving": g.beschrijving or "",
+        "titel_count": len(g.titels) if g.titels is not None else 0,
+    }
+    if with_titels:
+        out["titels"] = [titel_to_dict(t) | {"id": t.id} for t in (g.titels or [])]
+    return out
+
+
+def list_titelgroepen() -> list[dict]:
+    from .db import db, Titelgroep
+    return [titelgroep_to_dict(g) for g in db.session.query(Titelgroep).order_by(Titelgroep.naam).all()]
+
+
+def get_titelgroep(groep_id: str, with_titels: bool = False) -> dict | None:
+    from .db import db, Titelgroep
+    g = db.session.get(Titelgroep, groep_id)
+    return titelgroep_to_dict(g, with_titels=with_titels) if g else None
+
+
+def save_titelgroep(groep_id: str | None, data: dict) -> dict:
+    from .db import db, Titelgroep
+    _backup_current_to_json()
+
+    if groep_id:
+        g = db.session.get(Titelgroep, groep_id)
+        if g is None:
+            g = Titelgroep(id=groep_id)
+            db.session.add(g)
+    else:
+        g = Titelgroep(id=new_id())
+        db.session.add(g)
+
+    if "naam" in data:
+        g.naam = data["naam"]
+    if "beschrijving" in data:
+        g.beschrijving = data["beschrijving"]
+
+    db.session.commit()
+    return titelgroep_to_dict(g)
+
+
+def delete_titelgroep(groep_id: str) -> bool:
+    """Verwijder een groep. Titels in die groep krijgen titelgroep_id = NULL."""
+    from .db import db, Titelgroep, Titel
+    _backup_current_to_json()
+    g = db.session.get(Titelgroep, groep_id)
+    if g is None:
+        return False
+    # Loskoppel alle titels eerst (ondelete=SET NULL doet dit ook, maar
+    # expliciet is veiliger op SQLite)
+    for t in db.session.query(Titel).filter_by(titelgroep_id=groep_id).all():
+        t.titelgroep_id = None
+    db.session.delete(g)
+    db.session.commit()
+    return True
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  IMPORT
+# ──────────────────────────────────────────────────────────────────────
 
 def import_data(new_data: dict, mode: str = "merge") -> int:
     """Importeer titels uit een dict. Retourneert aantal geïmporteerd."""

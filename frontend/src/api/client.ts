@@ -1,6 +1,6 @@
 import type {
   CalculateRequest, CalculateResponse, SensitivityResponse, ValidateResponse,
-  StoredTitel, TitelListItem, OplageSimResponse,
+  StoredTitel, TitelListItem, OplageSimResponse, Titelgroep,
 } from './types';
 
 const BASE = '/calculatie/api';
@@ -68,6 +68,7 @@ export async function saveTitel(data: {
   verdeling_webshop: number;
   verdeling_retail: number;
   verdeling_b2b: number;
+  titelgroep_id?: string | null;
 }): Promise<StoredTitel> {
   return post('/titels', data);
 }
@@ -88,6 +89,30 @@ export async function unarchiveTitel(id: string): Promise<void> {
 
 export async function listTitelsIncludeArchived(): Promise<TitelListItem[]> {
   return get('/titels?archived=true');
+}
+
+// ── Titelgroepen ──
+
+export async function listTitelgroepen(): Promise<Titelgroep[]> {
+  return get('/titelgroepen');
+}
+
+export async function createTitelgroep(naam: string, beschrijving?: string): Promise<Titelgroep> {
+  return post('/titelgroepen', { naam, beschrijving });
+}
+
+export async function updateTitelgroep(id: string, naam: string, beschrijving?: string): Promise<Titelgroep> {
+  const res = await fetch(BASE + `/titelgroepen/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ naam, beschrijving }),
+  });
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteTitelgroep(id: string): Promise<void> {
+  return del(`/titelgroepen/${id}`);
 }
 
 export async function importCsv(file: File): Promise<{ imported: number }> {

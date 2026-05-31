@@ -1,6 +1,7 @@
 import type { TitelInput } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
+import { TitelgroepPicker } from './TitelgroepPicker';
 import { KostenpostenSection } from './KostenpostenSection';
 import { WebshopKostenSection } from './WebshopKostenSection';
 import { RetailKostenSection } from './RetailKostenSection';
@@ -16,6 +17,8 @@ interface Props {
   updateField: <K extends keyof TitelInput>(field: K, value: TitelInput[K]) => void;
   verdeling: { webshop: number; retail: number; b2b: number };
   setVerdeling: (v: { webshop: number; retail: number; b2b: number }) => void;
+  titelgroepId: string | null;
+  setTitelgroepId: (id: string | null) => void;
 }
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
@@ -32,12 +35,16 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
 export function CalculatieForm({
   titelInput, updateField,
   verdeling, setVerdeling,
+  titelgroepId, setTitelgroepId,
 }: Props) {
   return (
     <div className="space-y-1">
       {/* ─── TITEL & BOEK ─── */}
       <Section title="Basisgegevens" defaultOpen>
         <BasisgegevensSection titelInput={titelInput} updateField={updateField} />
+        <div className="mt-3 pt-3 border-t border-[var(--border)]">
+          <TitelgroepPicker value={titelgroepId} onChange={setTitelgroepId} />
+        </div>
       </Section>
 
       {/* ─── PRODUCTIE & KOSTEN ─── */}
