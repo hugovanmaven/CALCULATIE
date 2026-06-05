@@ -665,20 +665,21 @@ def simulate_oplage():
     totaal_drukkosten = sum(d.get("oplage", 0) * d.get("drukkosten_per_ex", 0) for d in drukken_config)
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_config)
 
-    # Voorschotten per partij (advance payments — alleen bij royalty/staffel-
-    # deals, want winstdeling kent geen per-ex stroom om in te lopen).
-    def _in_royalty_mode(prefix: str) -> bool:
-        if ti.get(f"{prefix}_winstdeling_pct", 0) > 0:
-            return False
-        return True
+    # Voorschotten per partij. Alleen relevant als er ÓÓK een actieve
+    # per-ex stroom is om het voorschot tegen weg te schrijven — anders
+    # is het een achtergebleven veld zonder deal en mag het niet meetellen.
+    def _heeft_royalty_deal(prefix: str) -> bool:
+        return ti.get(f"{prefix}_pct", 0) > 0 or len(ti.get(f"{prefix}_staffel", []) or []) > 0
 
-    auteur_voorschot = ti.get("auteur_voorschot", 0) if (ti.get("auteur_royalty_staffel") or ti.get("auteur_winstdeling_pct", 0) <= 0) else 0
-    agent_voorschot = ti.get("agent_voorschot", 0) if _in_royalty_mode("agent") else 0
-    vertaler_voorschot = ti.get("vertaler_voorschot", 0) if _in_royalty_mode("vertaler") else 0
-    illustrator_voorschot = ti.get("illustrator_voorschot", 0) if _in_royalty_mode("illustrator") else 0
+    auteur_voorschot = ti.get("auteur_voorschot", 0) if len(ti.get("auteur_royalty_staffel") or []) > 0 else 0
+    agent_voorschot = ti.get("agent_voorschot", 0) if _heeft_royalty_deal("agent") else 0
+    vertaler_voorschot = ti.get("vertaler_voorschot", 0) if _heeft_royalty_deal("vertaler") else 0
+    illustrator_voorschot = ti.get("illustrator_voorschot", 0) if _heeft_royalty_deal("illustrator") else 0
     extra_derden_voorschot = sum(
         d.get("voorschot", 0) for d in ti.get("extra_derden", [])
-        if d.get("type", "royalty") == "royalty"
+        if d.get("type") == "royalty" and (
+            d.get("percentage", 0) > 0 or len(d.get("staffel") or []) > 0
+        )
     )
     totaal_voorschotten = (
         auteur_voorschot + agent_voorschot + vertaler_voorschot
@@ -1087,14 +1088,20 @@ def export_excel():
 
     # Compute simulation manually for 6 oplage points
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
-    # Voorschotten alleen bij royalty-mode (winstdeling kent geen recoupment)
-    auteur_vs = ti.get("auteur_voorschot", 0) if ti.get("auteur_winstdeling_pct", 0) <= 0 else 0
-    agent_vs = ti.get("agent_voorschot", 0) if ti.get("agent_winstdeling_pct", 0) <= 0 else 0
-    vertaler_vs = ti.get("vertaler_voorschot", 0) if ti.get("vertaler_winstdeling_pct", 0) <= 0 else 0
-    illustrator_vs = ti.get("illustrator_voorschot", 0) if ti.get("illustrator_winstdeling_pct", 0) <= 0 else 0
+    # Voorschotten alleen meetellen als er ook een actieve per-ex stroom
+    # is (anders blijft het een verlaten veld zonder deal).
+    def _heeft_royalty_deal_x(prefix: str) -> bool:
+        return ti.get(f"{prefix}_pct", 0) > 0 or len(ti.get(f"{prefix}_staffel") or []) > 0
+
+    auteur_vs = ti.get("auteur_voorschot", 0) if len(ti.get("auteur_royalty_staffel") or []) > 0 else 0
+    agent_vs = ti.get("agent_voorschot", 0) if _heeft_royalty_deal_x("agent") else 0
+    vertaler_vs = ti.get("vertaler_voorschot", 0) if _heeft_royalty_deal_x("vertaler") else 0
+    illustrator_vs = ti.get("illustrator_voorschot", 0) if _heeft_royalty_deal_x("illustrator") else 0
     extra_vs = sum(
         d.get("voorschot", 0) for d in ti.get("extra_derden", [])
-        if d.get("type", "royalty") == "royalty"
+        if d.get("type") == "royalty" and (
+            d.get("percentage", 0) > 0 or len(d.get("staffel") or []) > 0
+        )
     )
     totaal_vs = auteur_vs + agent_vs + vertaler_vs + illustrator_vs + extra_vs
 
