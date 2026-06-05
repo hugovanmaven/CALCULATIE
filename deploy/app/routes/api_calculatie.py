@@ -10,7 +10,7 @@ from dataclasses import asdict
 from flask import Blueprint, request, jsonify, Response, abort
 
 from ..calculatie import (
-    TitelInput, StaffelTrede, KostenPost, DrukConfig,
+    TitelInput, StaffelTrede, KostenPost, DrukConfig, ExtraDerde,
     bereken_titel,
     KanaalResultaat, DrukResultaat, CalculatieResultaat,
 )
@@ -35,6 +35,22 @@ def _kostenposten_list(items: list[dict]) -> list[KostenPost]:
             bedrag=kp.get("bedrag", 0.0),
         )
         for kp in items
+    ]
+
+
+def _extra_derden_list(items: list[dict]) -> list[ExtraDerde]:
+    return [
+        ExtraDerde(
+            id=ed.get("id", ""),
+            naam=ed.get("naam", ""),
+            type=ed.get("type", "royalty"),
+            percentage=ed.get("percentage", 0.0),
+            staffel=_staffel_list(ed.get("staffel", [])),
+            # Voorschot is alleen relevant bij royalty; bij winstdeling
+            # negeren we het (al zou de UI 't ook moeten verbergen).
+            voorschot=ed.get("voorschot", 0.0) if ed.get("type", "royalty") == "royalty" else 0.0,
+        )
+        for ed in items
     ]
 
 
@@ -89,6 +105,8 @@ def dict_to_titel_input(d: dict) -> TitelInput:
         illustrator_staffel=_staffel_list(d.get("illustrator_staffel", [])),
         illustrator_winstdeling_pct=d.get("illustrator_winstdeling_pct", 0.0),
         illustrator_voorschot=d.get("illustrator_voorschot", 0.0),
+        # Extra derden (flexibel)
+        extra_derden=_extra_derden_list(d.get("extra_derden", [])),
         # Partnership
         heeft_partner=d.get("heeft_partner", False),
         partner_naam=d.get("partner_naam", ""),
@@ -647,13 +665,20 @@ def simulate_oplage():
     totaal_drukkosten = sum(d.get("oplage", 0) * d.get("drukkosten_per_ex", 0) for d in drukken_config)
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_config)
 
-    # Voorschotten per partij (advance payments — recouped against ongoing royalties/commissions)
-    auteur_voorschot = ti.get("auteur_voorschot", 0)
-    agent_voorschot = ti.get("agent_voorschot", 0)
-    vertaler_voorschot = ti.get("vertaler_voorschot", 0)
-    illustrator_voorschot = ti.get("illustrator_voorschot", 0)
+    # Voorschotten per partij (advance payments — alleen bij royalty/staffel-
+    # deals, want winstdeling kent geen per-ex stroom om in te lopen).
+    def _in_royalty_mode(prefix: str) -> bool:
+        if ti.get(f"{prefix}_winstdeling_pct", 0) > 0:
+            return False
+        return True
+
+    auteur_voorschot = ti.get("auteur_voorschot", 0) if (ti.get("auteur_royalty_staffel") or ti.get("auteur_winstdeling_pct", 0) <= 0) else 0
+    agent_voorschot = ti.get("agent_voorschot", 0) if _in_royalty_mode("agent") else 0
+    vertaler_voorschot = ti.get("vertaler_voorschot", 0) if _in_royalty_mode("vertaler") else 0
+    illustrator_voorschot = ti.get("illustrator_voorschot", 0) if _in_royalty_mode("illustrator") else 0
     extra_derden_voorschot = sum(
         d.get("voorschot", 0) for d in ti.get("extra_derden", [])
+        if d.get("type", "royalty") == "royalty"
     )
     totaal_voorschotten = (
         auteur_voorschot + agent_voorschot + vertaler_voorschot
@@ -1062,11 +1087,15 @@ def export_excel():
 
     # Compute simulation manually for 6 oplage points
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
-    auteur_vs = ti.get("auteur_voorschot", 0)
-    agent_vs = ti.get("agent_voorschot", 0)
-    vertaler_vs = ti.get("vertaler_voorschot", 0)
-    illustrator_vs = ti.get("illustrator_voorschot", 0)
-    extra_vs = sum(d.get("voorschot", 0) for d in ti.get("extra_derden", []))
+    # Voorschotten alleen bij royalty-mode (winstdeling kent geen recoupment)
+    auteur_vs = ti.get("auteur_voorschot", 0) if ti.get("auteur_winstdeling_pct", 0) <= 0 else 0
+    agent_vs = ti.get("agent_voorschot", 0) if ti.get("agent_winstdeling_pct", 0) <= 0 else 0
+    vertaler_vs = ti.get("vertaler_voorschot", 0) if ti.get("vertaler_winstdeling_pct", 0) <= 0 else 0
+    illustrator_vs = ti.get("illustrator_voorschot", 0) if ti.get("illustrator_winstdeling_pct", 0) <= 0 else 0
+    extra_vs = sum(
+        d.get("voorschot", 0) for d in ti.get("extra_derden", [])
+        if d.get("type", "royalty") == "royalty"
+    )
     totaal_vs = auteur_vs + agent_vs + vertaler_vs + illustrator_vs + extra_vs
 
     druk0 = calc["drukken"][0] if calc.get("drukken") else {}

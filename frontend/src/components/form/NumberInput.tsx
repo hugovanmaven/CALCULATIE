@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 interface NumberInputProps {
   label: string;
   value: number;
@@ -28,6 +30,19 @@ const WIDTH_CLASS: Record<NonNullable<NumberInputProps['width']>, string> = {
 export function NumberInput({
   label, value, onChange, prefix, suffix, step = 0.01, min, max, help, width = 'full',
 }: NumberInputProps) {
+  // Lokale draft-string tijdens focus zodat user "0" kan typen zonder dat
+  // de input visueel leeg wordt (anders zou value=0 → "" → cursor in leeg veld).
+  const [draft, setDraft] = useState<string | null>(null);
+
+  // Display: tijdens focus = wat user typt; daarbuiten = value als getal,
+  // behalve precies 0 → blank zodat een 'ongebruikt' veld rustig oogt.
+  const displayValue: string | number =
+    draft !== null
+      ? draft
+      : value === 0 || isNaN(value)
+        ? ''
+        : value;
+
   return (
     <div className={WIDTH_CLASS[width]}>
       <label className="block text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide mb-1 break-words leading-tight">
@@ -41,8 +56,14 @@ export function NumberInput({
         )}
         <input
           type="number"
-          value={value || ''}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
+          value={displayValue}
+          onFocus={() => setDraft(value === 0 || isNaN(value) ? '' : String(value))}
+          onChange={e => {
+            setDraft(e.target.value);
+            const parsed = parseFloat(e.target.value);
+            onChange(isNaN(parsed) ? 0 : parsed);
+          }}
+          onBlur={() => setDraft(null)}
           step={step}
           min={min}
           max={max}
@@ -56,7 +77,9 @@ export function NumberInput({
           </span>
         )}
       </div>
-      {help && <p className="mt-1 text-xs text-[var(--text-tertiary)]">{help}</p>}
+      {help && (
+        <p className="mt-1 text-[10px] text-[var(--text-tertiary)] leading-tight">{help}</p>
+      )}
     </div>
   );
 }
