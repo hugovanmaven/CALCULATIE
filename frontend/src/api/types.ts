@@ -104,6 +104,8 @@ export interface KanaalResultaat {
   illustrator: number;
   agent: number;
   overige_kosten: number;
+  extra_derden_totaal?: number;
+  extra_derden_per_naam?: { naam: string; type: 'royalty' | 'winstdeling'; bedrag: number }[];
   totaal_kosten: number;
   brutowinst: number;
   auteur_royalty: number;

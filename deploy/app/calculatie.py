@@ -46,6 +46,23 @@ class DrukConfig:
 
 
 @dataclass
+class ExtraDerde:
+    """Een flexibele extra derde (bv. tweede vertaler, co-auteur, etc.).
+
+    type='royalty' → percentage van verkoopprijs ex BTW per ex; voorschot
+    wordt ingelopen via die royalty.
+    type='winstdeling' → percentage van brutowinst; voorschot is conceptueel
+    niet van toepassing (geen per-ex stroom om mee in te lopen).
+    """
+    id: str = ""
+    naam: str = ""
+    type: str = "royalty"  # "royalty" | "winstdeling"
+    percentage: float = 0.0
+    staffel: list[StaffelTrede] = field(default_factory=list)
+    voorschot: float = 0.0
+
+
+@dataclass
 class TitelInput:
     """Alle invoergegevens voor één titel."""
 
@@ -99,6 +116,9 @@ class TitelInput:
     illustrator_staffel: list[StaffelTrede] = field(default_factory=list)
     illustrator_winstdeling_pct: float = 0.0
     illustrator_voorschot: float = 0.0
+
+    # ── Extra derden (flexibele lijst) ──
+    extra_derden: list["ExtraDerde"] = field(default_factory=list)
 
     # ── Partnership ──
     heeft_partner: bool = False
@@ -172,6 +192,10 @@ class KanaalResultaat:
     illustrator: float = 0.0
     agent: float = 0.0
     overige_kosten: float = 0.0
+    # Extra derden — per-naam breakdown voor de waterfall + totaal voor
+    # eenvoudige aggregatie elders.
+    extra_derden_totaal: float = 0.0
+    extra_derden_per_naam: list[dict] = field(default_factory=list)
 
     totaal_kosten: float = 0.0
     brutowinst: float = 0.0
@@ -272,7 +296,33 @@ def bereken_kanaal(
         else:
             r.agent = r.verkoopprijs_ex_btw * t.agent_pct
 
+    # Extra derden — royalty-mode telt mee als per-ex kost over VKP ex BTW;
+    # winstdeling-mode wordt verderop bij STAP 4b verwerkt.
+    extra_derden_royalty = 0.0
+    for ed in (t.extra_derden or []):
+        if ed.type == "royalty":
+            if ed.staffel:
+                pct = bereken_gemiddeld_staffel_percentage(
+                    ed.staffel, cumulatief_verkocht + 1, oplage
+                )
+                bedrag = r.verkoopprijs_ex_btw * pct
+            else:
+                bedrag = r.verkoopprijs_ex_btw * (ed.percentage or 0.0)
+            extra_derden_royalty += bedrag
+            r.extra_derden_per_naam.append({
+                "naam": ed.naam or "Extra persoon",
+                "type": "royalty",
+                "bedrag": bedrag,
+            })
+
     r.overige_kosten = r.netto_omzet * t.overige_kosten_pct
+
+    # ── STAP 3a: Auteur royalty (% van VKP ex BTW — hoort vóór brutowinst) ──
+    # Auteur winstdeling wordt verderop bij STAP 4 berekend (% van brutowinst).
+    if t.auteur_royalty_staffel:
+        r.auteur_royalty = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
+            t.auteur_royalty_staffel, cumulatief_verkocht + 1, oplage
+        )
 
     r.totaal_kosten = (
         r.drukkosten
@@ -285,18 +335,16 @@ def bereken_kanaal(
         + r.vertaler
         + r.illustrator
         + r.agent
+        + extra_derden_royalty
+        + r.auteur_royalty
         + r.overige_kosten
     )
 
-    # ── STAP 3: Brutowinst ──
+    # ── STAP 3b: Brutowinst (ná alle royalty's, vóór winstdelingen) ──
     r.brutowinst = r.netto_omzet - r.totaal_kosten
 
-    # ── STAP 4: Auteur ──
-    if t.auteur_royalty_staffel:
-        r.auteur_royalty = r.verkoopprijs_ex_btw * bereken_gemiddeld_staffel_percentage(
-            t.auteur_royalty_staffel, cumulatief_verkocht + 1, oplage
-        )
-    elif t.auteur_winstdeling_pct > 0:
+    # ── STAP 4: Auteur winstdeling (% van brutowinst) ──
+    if not t.auteur_royalty_staffel and t.auteur_winstdeling_pct > 0:
         r.auteur_winstdeling = r.brutowinst * t.auteur_winstdeling_pct
 
     auteur_totaal = r.auteur_royalty + r.auteur_winstdeling
@@ -312,6 +360,19 @@ def bereken_kanaal(
     if t.illustrator_winstdeling_pct > 0:
         r.illustrator = r.brutowinst * t.illustrator_winstdeling_pct
         derden_winstdeling += r.illustrator
+    # Extra derden in winstdeling-mode
+    for ed in (t.extra_derden or []):
+        if ed.type == "winstdeling" and (ed.percentage or 0) > 0:
+            bedrag = r.brutowinst * ed.percentage
+            derden_winstdeling += bedrag
+            r.extra_derden_per_naam.append({
+                "naam": ed.naam or "Extra persoon",
+                "type": "winstdeling",
+                "bedrag": bedrag,
+            })
+
+    # Totaal voor eenvoudige aggregatie/serialisatie
+    r.extra_derden_totaal = sum(x["bedrag"] for x in r.extra_derden_per_naam)
 
     # ── STAP 5: Partner (informatief) ──
     # Partner-winstdeling (POM/UvNL) wordt buiten de titel-marge gehouden.
@@ -319,12 +380,14 @@ def bereken_kanaal(
     # voor de titel-marge willen we weten wat er ná auteur, vóór partner
     # overblijft. partner_winstdeling blijft berekend en zichtbaar in de
     # uitsplitsing, maar telt NIET mee in netto_winst_maven of marge_pct.
+    # Auteur royalty zit al in totaal_kosten verwerkt (boven brutowinst);
+    # daarom hoeven we hier alleen winstdelingen af te trekken.
     if t.heeft_partner:
-        winst_na_auteur = r.brutowinst - auteur_totaal - derden_winstdeling
+        winst_na_auteur = r.brutowinst - r.auteur_winstdeling - derden_winstdeling
         r.partner_winstdeling = winst_na_auteur * t.partner_winstdeling_pct
 
-    # ── STAP 6: Netto winst Maven (ná auteur + derden, vóór partner) ──
-    r.netto_winst_maven = r.brutowinst - auteur_totaal - derden_winstdeling
+    # ── STAP 6: Netto winst Maven (brutowinst − winstdelingen) ──
+    r.netto_winst_maven = r.brutowinst - r.auteur_winstdeling - derden_winstdeling
 
     if r.netto_omzet > 0:
         r.marge_pct = r.netto_winst_maven / r.netto_omzet

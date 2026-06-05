@@ -100,7 +100,7 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
       {priceSens && priceSens.length > 0 && (
         <VerkoopprijsAdvies priceSens={priceSens} currentPrice={titelInput.verkoopprijs_incl_btw} />
       )}
-      <DetailWaterfall druk={druk} verdeling={verdeling} />
+      <DetailWaterfall druk={druk} verdeling={verdeling} titelInput={titelInput} />
     </div>
   );
 }
@@ -408,7 +408,12 @@ const KOSTEN_TABS: { key: KostenTab; label: string }[] = [
   { key: 'b2b', label: 'B2B' },
 ];
 
-function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop: number; retail: number; b2b: number } }) {
+function DetailWaterfall({ druk, verdeling, titelInput }: { druk: any; verdeling: { webshop: number; retail: number; b2b: number }; titelInput: TitelInput }) {
+  // Bepaal per derde-partij de mode. Royalty-mode hoort BOVEN de brutowinst
+  // (% van VKP ex BTW), winstdeling-mode hoort ERONDER (% van brutowinst).
+  const agentMode: 'royalty' | 'winstdeling' = (titelInput.agent_winstdeling_pct ?? 0) > 0 ? 'winstdeling' : 'royalty';
+  const vertalerMode: 'royalty' | 'winstdeling' = (titelInput.vertaler_winstdeling_pct ?? 0) > 0 ? 'winstdeling' : 'royalty';
+  const illustratorMode: 'royalty' | 'winstdeling' = (titelInput.illustrator_winstdeling_pct ?? 0) > 0 ? 'winstdeling' : 'royalty';
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<KostenTab>('gemiddelde');
 
@@ -421,6 +426,52 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
     return druk[activeTab]?.[field] ?? 0;
   };
 
+  // Extra derden — bouw per-naam regels op. Royalty-derden komen vóór
+  // 'Brutowinst' (zoals illustrator/vertaler/agent); winstdeling-derden
+  // ná 'Brutowinst' (zoals auteur winstdeling).
+  type DerdeRegel = { naam: string; bedrag: number };
+  const extraDerdenRegels: { royalty: DerdeRegel[]; winstdeling: DerdeRegel[] } = (() => {
+    const naamMap = new Map<string, { naam: string; type: 'royalty' | 'winstdeling'; bedrag: number }>();
+    const accumuleer = (kanaalData: any, weight: number) => {
+      const lijst = kanaalData?.extra_derden_per_naam ?? [];
+      for (const ed of lijst) {
+        const key = `${ed.naam}|${ed.type}`;
+        const existing = naamMap.get(key);
+        const bedrag = (ed.bedrag ?? 0) * weight;
+        if (existing) existing.bedrag += bedrag;
+        else naamMap.set(key, { naam: ed.naam, type: ed.type, bedrag });
+      }
+    };
+    if (activeTab === 'gemiddelde') {
+      accumuleer(druk.webshop, verdeling.webshop);
+      accumuleer(druk.retail, verdeling.retail);
+      accumuleer(druk.b2b, verdeling.b2b);
+    } else {
+      accumuleer(druk[activeTab], 1);
+    }
+    const royalty: DerdeRegel[] = [];
+    const winstdeling: DerdeRegel[] = [];
+    for (const v of naamMap.values()) {
+      (v.type === 'royalty' ? royalty : winstdeling).push({ naam: v.naam, bedrag: v.bedrag });
+    }
+    return { royalty, winstdeling };
+  })();
+
+  // Helper: regel voor één van de drie vaste derden, alleen tonen als
+  // bedrag > 0, gelabeld met de mode tussen haakjes als winstdeling.
+  const derdeRegel = (label: string, field: string, mode: 'royalty' | 'winstdeling') => ({
+    label: mode === 'winstdeling' ? `${label} (winstdeling)` : label,
+    value: -v(field),
+    mode,
+  });
+
+  const agentRegel = derdeRegel('Agent', 'agent', agentMode);
+  const vertalerRegel = derdeRegel('Vertaler', 'vertaler', vertalerMode);
+  const illustratorRegel = derdeRegel('Illustrator', 'illustrator', illustratorMode);
+
+  const royaltyDerden = [vertalerRegel, illustratorRegel, agentRegel].filter(r => r.mode === 'royalty');
+  const winstdelingDerden = [vertalerRegel, illustratorRegel, agentRegel].filter(r => r.mode === 'winstdeling');
+
   const lines: { label: string; value: number; type?: 'subtotal' | 'info' }[] = [
     { label: 'Verkoopprijs ex BTW', value: v('verkoopprijs_ex_btw') },
     { label: activeTab === 'retail' || activeTab === 'gemiddelde' ? 'Boekhandelskorting' : 'Korting', value: -v('korting_bedrag') },
@@ -432,13 +483,16 @@ function DetailWaterfall({ druk, verdeling }: { druk: any; verdeling: { webshop:
     { label: 'B2B porto', value: -v('b2b_porto') },
     { label: 'Transactiekosten', value: -v('transactiekosten') },
     { label: 'CAC', value: -v('cac') },
-    { label: 'Vertaler', value: -v('vertaler') },
-    { label: 'Illustrator', value: -v('illustrator') },
-    { label: 'Agent', value: -v('agent') },
+    // Royalty-derden (% van VKP ex BTW) — boven brutowinst
+    { label: 'Auteur royalty', value: -v('auteur_royalty') },
+    ...royaltyDerden.map(({ label, value }) => ({ label, value })),
+    ...extraDerdenRegels.royalty.map(r => ({ label: r.naam, value: -r.bedrag })),
     { label: 'Overige kosten', value: -v('overige_kosten') },
     { label: 'Brutowinst', value: v('brutowinst'), type: 'subtotal' },
-    { label: 'Auteur royalty', value: -v('auteur_royalty') },
+    // Winstdeling-derden (% van brutowinst) — onder brutowinst
     { label: 'Auteur winstdeling', value: -v('auteur_winstdeling') },
+    ...winstdelingDerden.map(({ label, value }) => ({ label, value })),
+    ...extraDerdenRegels.winstdeling.map(r => ({ label: `${r.naam} (winstdeling)`, value: -r.bedrag })),
     { label: 'Netto winst Maven', value: v('netto_winst_maven'), type: 'subtotal' },
     { label: 'Partner winstdeling (informatief, niet in marge)', value: -v('partner_winstdeling'), type: 'info' },
   ].filter((l): l is { label: string; value: number; type?: 'subtotal' | 'info' } => Math.abs(l.value) > 0.001 || l.type === 'subtotal');
