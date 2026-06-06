@@ -1153,10 +1153,16 @@ def export_excel():
 
     # Bereken aggregaten voor headline
     druk0 = calc["drukken"][0] if calc.get("drukken") else {}
-    gewogen_marge = druk0.get("gewogen_marge_pct", 0) if druk0 else 0
-    gewogen_winst = druk0.get("gewogen_netto_winst", 0) if druk0 else 0
-    gewogen_omzet = druk0.get("gewogen_netto_omzet", 0) if druk0 else 0
+    # Gebruik gewogen_marge_pct_totaal (over ALLE drukken), niet alleen druk0
+    gewogen_marge = calc.get("gewogen_marge_pct_totaal", druk0.get("gewogen_marge_pct", 0) if druk0 else 0)
+    # Gewogen netto winst en omzet per ex: som euro / totaal oplage
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
+    if totaal_oplage > 0:
+        gewogen_winst = sum(d["gewogen_netto_winst"] * d["oplage"] for d in calc["drukken"]) / totaal_oplage
+        gewogen_omzet = sum(d["gewogen_netto_omzet"] * d["oplage"] for d in calc["drukken"]) / totaal_oplage
+    else:
+        gewogen_winst = druk0.get("gewogen_netto_winst", 0) if druk0 else 0
+        gewogen_omzet = druk0.get("gewogen_netto_omzet", 0) if druk0 else 0
 
     # ── HEADLINE ──
     ws_res.merge_cells(f"A{r}:H{r}")
@@ -1351,7 +1357,7 @@ def export_excel():
     h2(ws_res[f"A{r}"], "OPLAGE SIMULATIE")
     r += 1
 
-    sim_headers = ["Oplage", "Netto omzet", "Drukkosten", "Eenmalige kosten", "Dealkosten", "Netto resultaat", "Marge %", "Voorschot ingelopen"]
+    sim_headers = ["Oplage", "Netto omzet", "Drukkosten", "Eenmalige kosten", "Dealkosten", "Netto resultaat", "Marge %"]
     for ci, hdr in enumerate(sim_headers, 1):
         th(ws_res.cell(r, ci), hdr)
         ws_res.cell(r, ci).alignment = Alignment(horizontal="right" if ci > 1 else "left")
@@ -1511,30 +1517,110 @@ def export_excel():
                            color=GROEN if sd["marge"] >= 0.35 else ("FFE65100" if sd["marge"] >= 0 else "FFC62828"))
         marg_c.fill = PatternFill("solid", fgColor=bg)
         marg_c.alignment = Alignment(horizontal="right")
-        # Voorschot ingelopen
-        vs_c = ws_res.cell(r, 8)
-        if sd["voorschot_in"] is None:
-            vs_c.value = "—"
-        else:
-            vs_c.value = "Ja" if sd["voorschot_in"] else "Nee"
-            vs_c.font = Font(size=9, bold=is_be, color=GROEN if sd["voorschot_in"] else "FFE65100")
-        vs_c.fill = PatternFill("solid", fgColor=bg)
-        vs_c.alignment = Alignment(horizontal="right")
-        if sd["voorschot_in"] is None:
-            vs_c.font = Font(size=9, bold=is_be, color="FF999999")
         r += 1
 
-    # Toelichting onderaan
+    # Toelichting onderaan oplage-simulatie
     r += 1
-    ws_res.merge_cells(f"A{r}:H{r}")
+    ws_res.merge_cells(f"A{r}:G{r}")
     note_cell = ws_res[f"A{r}"]
     note_cell.value = (
-        "Dealkosten = voorschotten + royalty's en commissies aan auteur, agent, vertaler, illustrator en extra derden, "
-        "inclusief winstdeling. Voorschot ingelopen = wanneer de cumulatieve royalty's het voorschot bereiken."
+        "Dealkosten = voorschotten + royalty's en commissies aan alle partijen, inclusief winstdeling."
     )
     note_cell.font = Font(size=8, italic=True, color="FF666666")
     note_cell.alignment = Alignment(wrap_text=True, vertical="top")
-    ws_res.row_dimensions[r].height = 30
+    r += 2
+
+    # ── VOORSCHOT INGELOPEN ──
+    # Toon alleen als er een actief voorschot is om in te lopen
+    if totaal_vs > 0:
+        ws_res.merge_cells(f"A{r}:G{r}")
+        h2(ws_res[f"A{r}"], "VOORSCHOT INGELOPEN")
+        r += 1
+
+        # Bereken earn-out volume (cumulatieve royalty's ≥ voorschot)
+        total_recoup_per_ex = (
+            (royalty_pex if auteur_vs > 0 else 0)
+            + (agent_pex if agent_vs > 0 else 0)
+            + (vertaler_pex if vertaler_vs > 0 else 0)
+            + (illustrator_pex if illustrator_vs > 0 else 0)
+        )
+        earn_out_vol = None
+        if total_recoup_per_ex > 0:
+            earn_out_vol = int(totaal_vs / total_recoup_per_ex) + 1
+            # Rond op nearest 50
+            earn_out_vol = ((earn_out_vol + 49) // 50) * 50
+
+        # Samenvatting
+        label(ws_res[f"A{r}"], "Totaal voorschot", bold=True)
+        val(ws_res[f"B{r}"], totaal_vs, "€ #,##0", bold=True)
+        r += 1
+        label(ws_res[f"A{r}"], "Royalty / commissie per ex")
+        val(ws_res[f"B{r}"], total_recoup_per_ex, "€ #,##0.00")
+        r += 1
+        label(ws_res[f"A{r}"], "Ingelopen bij oplage", bold=True)
+        if earn_out_vol is None:
+            ws_res[f"B{r}"].value = "n.v.t. (geen royalty-stroom)"
+            ws_res[f"B{r}"].font = Font(size=10, italic=True, color="FF999999")
+            ws_res[f"B{r}"].alignment = Alignment(horizontal="right")
+        else:
+            val(ws_res[f"B{r}"], earn_out_vol, "#,##0", bold=True,
+                color=GROEN)
+            ws_res.cell(r, 3).value = "ex"
+            ws_res.cell(r, 3).font = Font(size=9, color="FF999999")
+        r += 1
+
+        # Per-partij breakdown (alleen actieve partijen)
+        breakdowns = []
+        if auteur_vs > 0 and royalty_pex > 0:
+            breakdowns.append(("Auteur", auteur_vs, royalty_pex))
+        if agent_vs > 0 and agent_pex > 0:
+            breakdowns.append(("Agent", agent_vs, agent_pex))
+        if vertaler_vs > 0 and vertaler_pex > 0:
+            breakdowns.append(("Vertaler", vertaler_vs, vertaler_pex))
+        if illustrator_vs > 0 and illustrator_pex > 0:
+            breakdowns.append(("Illustrator", illustrator_vs, illustrator_pex))
+
+        if len(breakdowns) > 1:
+            # Tabel-header
+            r += 1
+            for ci, hdr in enumerate(["Partij", "Voorschot", "Royalty / ex", "Ingelopen bij"], 1):
+                th(ws_res.cell(r, ci), hdr)
+                ws_res.cell(r, ci).alignment = Alignment(horizontal="right" if ci > 1 else "left")
+            r += 1
+            for naam, vs, royalty in breakdowns:
+                ws_res.cell(r, 1).value = naam
+                ws_res.cell(r, 1).font = Font(size=10)
+                val(ws_res.cell(r, 2), vs, "€ #,##0")
+                val(ws_res.cell(r, 3), royalty, "€ #,##0.00")
+                partij_earn = ((int(vs / royalty) + 49) // 50) * 50 if royalty > 0 else None
+                if partij_earn is not None:
+                    val(ws_res.cell(r, 4), partij_earn, "#,##0")
+                r += 1
+
+        # Status per oplage-punt
+        r += 1
+        for ci, hdr in enumerate(["Oplage", "Royalty's verdiend", "Status"], 1):
+            th(ws_res.cell(r, ci), hdr)
+            ws_res.cell(r, ci).alignment = Alignment(horizontal="right" if ci > 1 else "left")
+        r += 1
+
+        for sv in sim_vols:
+            total_earned = sv * total_recoup_per_ex
+            ingelopen = total_earned >= totaal_vs
+
+            ws_res.cell(r, 1).value = f"{sv:,}".replace(",", ".")
+            ws_res.cell(r, 1).font = Font(size=9)
+            val(ws_res.cell(r, 2), total_earned, "€ #,##0")
+            status_c = ws_res.cell(r, 3)
+            if ingelopen:
+                status_c.value = "✓ Ingelopen"
+                status_c.font = Font(size=9, bold=True, color=GROEN)
+            else:
+                pct_done = total_earned / totaal_vs if totaal_vs > 0 else 0
+                status_c.value = f"Nog open: {(totaal_vs - total_earned):,.0f}".replace(",", ".") + f"  ({pct_done*100:.0f}%)"
+                status_c.font = Font(size=9, color="FFE65100")
+            status_c.alignment = Alignment(horizontal="right")
+            r += 1
 
     # Output
     buf = BytesIO()
