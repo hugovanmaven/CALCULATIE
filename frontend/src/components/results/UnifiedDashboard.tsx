@@ -42,8 +42,8 @@ function pct(v: number): string {
   return (v * 100).toFixed(1) + '%';
 }
 
-async function downloadExcel(body: unknown, titel: string) {
-  const res = await fetch('/calculatie/api/export/excel', {
+async function downloadFile(endpoint: string, body: unknown, titel: string, ext: string) {
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -53,7 +53,7 @@ async function downloadExcel(body: unknown, titel: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `calculatie_${(titel || 'export').replace(/\s+/g, '_').slice(0, 30)}.xlsx`;
+  a.download = `calculatie_${(titel || 'export').replace(/\s+/g, '_').slice(0, 30)}.${ext}`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -69,13 +69,20 @@ export function UnifiedDashboard({ results, titelInput, verdeling, cacSens, pric
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
         <button
-          onClick={() => downloadExcel(exportBody, titelInput.titel)}
+          onClick={() => downloadFile('/calculatie/api/export/excel', exportBody, titelInput.titel, 'xlsx')}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-secondary)] transition-colors"
         >
           <Download size={13} />
-          Exporteer naar Excel
+          Excel
+        </button>
+        <button
+          onClick={() => downloadFile('/calculatie/api/export/pdf', exportBody, titelInput.titel, 'pdf')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-primary)] text-[var(--text-secondary)] text-xs hover:bg-[var(--bg-secondary)] transition-colors"
+        >
+          <Download size={13} />
+          PDF
         </button>
       </div>
       <HeadlineStats marge={margeTotaal} totaalExemplaren={totaalExemplaren} />
