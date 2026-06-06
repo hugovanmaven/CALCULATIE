@@ -1100,19 +1100,16 @@ def export_excel():
         winst = ti.get(f"{partij_key}_winstdeling_pct", 0)
         vast = ti.get(f"{partij_key}_pct", 0)
         voorschot = ti.get(f"{partij_key}_voorschot", 0)
-        # Skip helemaal als geen enkele waarde
-        if not staffel and winst == 0 and vast == 0 and (voorschot or 0) == 0:
+        # Geen actieve deal → partij weglaten (ook bij achtergelaten voorschot)
+        if not staffel and winst == 0 and vast == 0:
             continue
         if staffel:
             first_pct = staffel[0].get("percentage", 0)
             deal_row(partij_naam, "Royalty-staffel", first_pct, voorschot)
         elif winst > 0:
             deal_row(partij_naam, "Winstdeling", winst, None)
-        elif vast > 0:
-            deal_row(partij_naam, "Vast %", vast, voorschot)
         else:
-            # Alleen een achtergebleven voorschot zonder deal — laat 't zien als "geen deal"
-            deal_row(partij_naam, "(geen deal)", None, voorschot)
+            deal_row(partij_naam, "Vast %", vast, voorschot)
         r += 1
 
     # Extra derden
@@ -1153,10 +1150,16 @@ def export_excel():
 
     # Bereken aggregaten voor headline
     druk0 = calc["drukken"][0] if calc.get("drukken") else {}
-    gewogen_marge = druk0.get("gewogen_marge_pct", 0) if druk0 else 0
-    gewogen_winst = druk0.get("gewogen_netto_winst", 0) if druk0 else 0
-    gewogen_omzet = druk0.get("gewogen_netto_omzet", 0) if druk0 else 0
+    # Gebruik gewogen_marge_pct_totaal (over ALLE drukken), niet alleen druk0
+    gewogen_marge = calc.get("gewogen_marge_pct_totaal", druk0.get("gewogen_marge_pct", 0) if druk0 else 0)
+    # Gewogen netto winst en omzet per ex: som euro / totaal oplage
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
+    if totaal_oplage > 0:
+        gewogen_winst = sum(d["gewogen_netto_winst"] * d["oplage"] for d in calc["drukken"]) / totaal_oplage
+        gewogen_omzet = sum(d["gewogen_netto_omzet"] * d["oplage"] for d in calc["drukken"]) / totaal_oplage
+    else:
+        gewogen_winst = druk0.get("gewogen_netto_winst", 0) if druk0 else 0
+        gewogen_omzet = druk0.get("gewogen_netto_omzet", 0) if druk0 else 0
 
     # ── HEADLINE ──
     ws_res.merge_cells(f"A{r}:H{r}")
@@ -1198,7 +1201,7 @@ def export_excel():
             return total
 
         # Kolom-headers
-        for ci, hdr in enumerate(["Kostenregel", "Retail/CB", "Webshop", "B2B", "Gewogen"], 1):
+        for ci, hdr in enumerate(["Kostenregel", "Gewogen", "Retail/CB", "Webshop", "B2B"], 1):
             th(ws_res.cell(r, ci), hdr)
             if ci == 1:
                 ws_res.cell(r, ci).alignment = Alignment(horizontal="left", indent=1)
@@ -1266,7 +1269,6 @@ def export_excel():
         for wf in waterfall_rows:
             if wf["type"] in ("extra_royalty", "extra_winstdeling"):
                 want = "royalty" if wf["type"] == "extra_royalty" else "winstdeling"
-                # Verzamel alle unieke namen over de kanalen
                 names: set[str] = set()
                 for kanaal_data in (rt, ws_d, b2b):
                     for ed in (kanaal_data.get("extra_derden_per_naam") or []):
@@ -1274,25 +1276,23 @@ def export_excel():
                             names.add(ed.get("naam", "Extra"))
                 for nm in sorted(names):
                     suffix = " (winstdeling)" if want == "winstdeling" else ""
-                    ws_res.cell(r, 1).value = f"  {nm}{suffix}"
-                    ws_res.cell(r, 1).font = Font(size=9)
-                    ws_res.cell(r, 1).alignment = Alignment(horizontal="left", indent=1)
-                    for ci, (kanaal_data, _) in enumerate([(rt, verd_rt), (ws_d, verd_ws), (b2b, verd_b2b)], 2):
-                        ed_map = extra_per_kanaal(kanaal_data, want)
-                        v = -(ed_map.get(nm, 0))
-                        c = ws_res.cell(r, ci)
-                        val(c, v, "€ #,##0.00")
-                    # Gewogen
                     gw = -(extra_per_kanaal(rt, want).get(nm, 0)*verd_rt
                          + extra_per_kanaal(ws_d, want).get(nm, 0)*verd_ws
                          + extra_per_kanaal(b2b, want).get(nm, 0)*verd_b2b)
-                    val(ws_res.cell(r, 5), gw, "€ #,##0.00")
+                    kanaal_vals = [-(extra_per_kanaal(kd, want).get(nm, 0)) for kd in (rt, ws_d, b2b)]
+                    if gw == 0 and all(v == 0 for v in kanaal_vals):
+                        continue
+                    ws_res.cell(r, 1).value = f"  {nm}{suffix}"
+                    ws_res.cell(r, 1).font = Font(size=9)
+                    ws_res.cell(r, 1).alignment = Alignment(horizontal="left", indent=1)
+                    val(ws_res.cell(r, 2), gw, "€ #,##0.00")
+                    for ci, v in enumerate(kanaal_vals, 3):
+                        val(ws_res.cell(r, ci), v, "€ #,##0.00")
                     r += 1
                 continue
 
             # Filter: only_if
             if wf.get("only_if"):
-                # gebruik gewogen data voor filter
                 gewogen_data = {f: gewogen(f) for f in ["korting_bedrag"]}
                 if not wf["only_if"](gewogen_data):
                     continue
@@ -1300,6 +1300,18 @@ def export_excel():
             is_subtotal = wf["type"] == "subtotal"
             is_info = wf["type"] == "info"
             is_marge = wf["type"] == "marge"
+
+            # Bereken alle waarden vooraf
+            if is_marge:
+                gw_val = gewogen("netto_winst_maven") / gewogen("netto_omzet") if gewogen("netto_omzet") > 0 else 0
+                kanaal_vals_raw = [kd.get("marge_pct", 0) for kd in (rt, ws_d, b2b)]
+            else:
+                gw_val = gewogen(wf["field"]) * wf["sign"]
+                kanaal_vals_raw = [kd.get(wf["field"], 0) * wf["sign"] for kd in (rt, ws_d, b2b)]
+
+            # Zero-filter: sla item-rijen over als alle waarden 0 zijn
+            if wf["type"] == "item" and gw_val == 0 and all(v == 0 for v in kanaal_vals_raw):
+                continue
 
             # Label
             c_a = ws_res.cell(r, 1)
@@ -1312,37 +1324,33 @@ def export_excel():
             )
             c_a.alignment = Alignment(horizontal="left", indent=1 if not (is_subtotal or is_marge) else 0)
 
-            # Per kanaal
-            for ci, (kanaal_data, _) in enumerate([(rt, verd_rt), (ws_d, verd_ws), (b2b, verd_b2b)], 2):
-                v = kanaal_data.get(wf["field"], 0) * wf["sign"]
-                c = ws_res.cell(r, ci)
-                if is_marge:
-                    # Marge t.o.v. netto omzet — gebruik direct uit kanaal
-                    val(c, kanaal_data.get("marge_pct", 0), "0.0%",
-                        bold=True,
-                        color=GROEN if kanaal_data.get("marge_pct", 0) >= 0.35 else ("FFE65100" if kanaal_data.get("marge_pct", 0) >= 0 else "FFC62828"))
-                else:
-                    val(c, v, "€ #,##0.00",
-                        bold=is_subtotal,
-                        color="FF999999" if is_info else "FF000000")
-                if is_subtotal:
-                    c.fill = PatternFill("solid", fgColor=LICHT_GRIJS)
-
-            # Gewogen
-            gew_cell = ws_res.cell(r, 5)
+            # Gewogen in col 2
+            gew_cell = ws_res.cell(r, 2)
             if is_marge:
-                gw_marge = gewogen("netto_winst_maven") / gewogen("netto_omzet") if gewogen("netto_omzet") > 0 else 0
-                val(gew_cell, gw_marge, "0.0%",
+                val(gew_cell, gw_val, "0.0%",
                     bold=True,
-                    color=GROEN if gw_marge >= 0.35 else ("FFE65100" if gw_marge >= 0 else "FFC62828"))
+                    color=GROEN if gw_val >= 0.35 else ("FFE65100" if gw_val >= 0 else "FFC62828"))
             else:
-                gw_v = gewogen(wf["field"]) * wf["sign"]
-                val(gew_cell, gw_v, "€ #,##0.00",
+                val(gew_cell, gw_val, "€ #,##0.00",
                     bold=is_subtotal,
                     color="FF999999" if is_info else "FF000000")
             if is_subtotal:
                 gew_cell.fill = PatternFill("solid", fgColor=LICHT_GRIJS)
                 c_a.fill = PatternFill("solid", fgColor=LICHT_GRIJS)
+
+            # Per kanaal in cols 3-5
+            for ci, kval in enumerate(kanaal_vals_raw, 3):
+                c = ws_res.cell(r, ci)
+                if is_marge:
+                    val(c, kval, "0.0%",
+                        bold=True,
+                        color=GROEN if kval >= 0.35 else ("FFE65100" if kval >= 0 else "FFC62828"))
+                else:
+                    val(c, kval, "€ #,##0.00",
+                        bold=is_subtotal,
+                        color="FF999999" if is_info else "FF000000")
+                if is_subtotal:
+                    c.fill = PatternFill("solid", fgColor=LICHT_GRIJS)
             r += 1
         r += 1
 
@@ -1351,7 +1359,7 @@ def export_excel():
     h2(ws_res[f"A{r}"], "OPLAGE SIMULATIE")
     r += 1
 
-    sim_headers = ["Oplage", "Netto omzet", "Drukkosten", "Eenmalige kosten", "Dealkosten", "Netto resultaat", "Marge %", "Voorschot ingelopen"]
+    sim_headers = ["Oplage", "Netto omzet", "Drukkosten", "Eenmalige kosten", "Kanaalkosten", "Dealkosten", "Netto resultaat", "Marge %"]
     for ci, hdr in enumerate(sim_headers, 1):
         th(ws_res.cell(r, ci), hdr)
         ws_res.cell(r, ci).alignment = Alignment(horizontal="right" if ci > 1 else "left")
@@ -1388,6 +1396,10 @@ def export_excel():
     agent_pex = gew_sim("agent")
     vertaler_pex = gew_sim("vertaler")
     illustrator_pex = gew_sim("illustrator")
+    kanaal_var_pex = (
+        gew_sim("fulfillment") + gew_sim("distributie_cb") + gew_sim("b2b_porto")
+        + gew_sim("transactiekosten") + gew_sim("cac") + gew_sim("overige_kosten")
+    )
 
     var_w = netto_winst_pex + kosten_pex_sim
     pure_v = var_w + druk_pex
@@ -1434,7 +1446,10 @@ def export_excel():
         dealkosten += extra_vs
 
         omzet = vol * netto_omzet_pex
+        kanaal_var = vol * kanaal_var_pex
         net = vol * adj_pex - dk - totaal_eenmalig_sim - dealkosten
+        # Dealkosten als sluitpost zodat begroting altijd sluit (incl. winstdeling)
+        dealkosten_display = omzet - dk - totaal_eenmalig_sim - kanaal_var - net
         marge = net / omzet if omzet > 0 else 0
 
         # Voorschot ingelopen check
@@ -1446,7 +1461,8 @@ def export_excel():
         )
         voorschot_in = total_earned >= totaal_vs if totaal_vs > 0 else None
         return {"vol": vol, "omzet": omzet, "drukkosten": dk, "eenmalig": totaal_eenmalig_sim,
-                "dealkosten": dealkosten, "net": net, "marge": marge, "voorschot_in": voorschot_in}
+                "kanaal_var": kanaal_var, "dealkosten": dealkosten_display, "net": net,
+                "marge": marge, "voorschot_in": voorschot_in}
 
     def find_be_v2():
         if sim_at_v2(200000)["net"] < 0:
@@ -1501,40 +1517,136 @@ def export_excel():
         sc(2, sd["omzet"], "€ #,##0")
         sc(3, sd["drukkosten"], "€ #,##0")
         sc(4, sd["eenmalig"], "€ #,##0")
-        sc(5, sd["dealkosten"], "€ #,##0")
-        sc(6, sd["net"], "€ #,##0")
+        sc(5, sd["kanaal_var"], "€ #,##0")
+        sc(6, sd["dealkosten"], "€ #,##0")
+        sc(7, sd["net"], "€ #,##0")
         # Marge met kleur
-        marg_c = ws_res.cell(r, 7)
+        marg_c = ws_res.cell(r, 8)
         marg_c.value = sd["marge"]
         marg_c.number_format = "0.0%"
         marg_c.font = Font(size=9, bold=is_be,
                            color=GROEN if sd["marge"] >= 0.35 else ("FFE65100" if sd["marge"] >= 0 else "FFC62828"))
         marg_c.fill = PatternFill("solid", fgColor=bg)
         marg_c.alignment = Alignment(horizontal="right")
-        # Voorschot ingelopen
-        vs_c = ws_res.cell(r, 8)
-        if sd["voorschot_in"] is None:
-            vs_c.value = "—"
-        else:
-            vs_c.value = "Ja" if sd["voorschot_in"] else "Nee"
-            vs_c.font = Font(size=9, bold=is_be, color=GROEN if sd["voorschot_in"] else "FFE65100")
-        vs_c.fill = PatternFill("solid", fgColor=bg)
-        vs_c.alignment = Alignment(horizontal="right")
-        if sd["voorschot_in"] is None:
-            vs_c.font = Font(size=9, bold=is_be, color="FF999999")
         r += 1
 
-    # Toelichting onderaan
+    # Toelichting onderaan oplage-simulatie
     r += 1
     ws_res.merge_cells(f"A{r}:H{r}")
     note_cell = ws_res[f"A{r}"]
     note_cell.value = (
-        "Dealkosten = voorschotten + royalty's en commissies aan auteur, agent, vertaler, illustrator en extra derden, "
-        "inclusief winstdeling. Voorschot ingelopen = wanneer de cumulatieve royalty's het voorschot bereiken."
+        "Dealkosten = sluitpost (omzet − drukkosten − eenmalig − kanaalkosten − netto resultaat). Inclusief royalty's, winstdeling en voorschotten."
     )
     note_cell.font = Font(size=8, italic=True, color="FF666666")
     note_cell.alignment = Alignment(wrap_text=True, vertical="top")
-    ws_res.row_dimensions[r].height = 30
+    r += 2
+
+    # ── VOORSCHOT INGELOPEN ──
+    # Toon alleen als er een actief voorschot is om in te lopen
+    if totaal_vs > 0:
+        ws_res.merge_cells(f"A{r}:H{r}")
+        h2(ws_res[f"A{r}"], "VOORSCHOT INGELOPEN")
+        r += 1
+
+        # Bereken earn-out volume (cumulatieve royalty's ≥ voorschot)
+        total_recoup_per_ex = (
+            (royalty_pex if auteur_vs > 0 else 0)
+            + (agent_pex if agent_vs > 0 else 0)
+            + (vertaler_pex if vertaler_vs > 0 else 0)
+            + (illustrator_pex if illustrator_vs > 0 else 0)
+        )
+        earn_out_vol = None
+        if total_recoup_per_ex > 0:
+            earn_out_vol = int(totaal_vs / total_recoup_per_ex) + 1
+            earn_out_vol = ((earn_out_vol + 49) // 50) * 50
+
+        # Prominente lead-rij: ingelopen bij X ex
+        ws_res.merge_cells(f"A{r}:B{r}")
+        c_lead = ws_res[f"A{r}"]
+        if earn_out_vol is not None:
+            c_lead.value = f"Ingelopen bij:  {earn_out_vol:,}".replace(",", ".") + " ex"
+            c_lead.font = Font(size=11, bold=True, color=GROEN)
+        else:
+            c_lead.value = "Ingelopen bij:  n.v.t. (geen royalty-stroom)"
+            c_lead.font = Font(size=11, bold=True, color="FF999999")
+        c_lead.fill = PatternFill("solid", fgColor=LICHTGROEN)
+        c_lead.alignment = Alignment(horizontal="left", indent=1)
+        r += 1
+
+        # Sub-info: totaal voorschot + royalty per ex
+        label(ws_res[f"A{r}"], "Totaal voorschot")
+        val(ws_res[f"B{r}"], totaal_vs, "€ #,##0")
+        r += 1
+        label(ws_res[f"A{r}"], "Royalty / commissie per ex")
+        val(ws_res[f"B{r}"], total_recoup_per_ex, "€ #,##0.00")
+        r += 1
+
+        # Per-partij breakdown (alleen als >1 actieve partijen)
+        breakdowns = []
+        if auteur_vs > 0 and royalty_pex > 0:
+            breakdowns.append(("Auteur", auteur_vs, royalty_pex))
+        if agent_vs > 0 and agent_pex > 0:
+            breakdowns.append(("Agent", agent_vs, agent_pex))
+        if vertaler_vs > 0 and vertaler_pex > 0:
+            breakdowns.append(("Vertaler", vertaler_vs, vertaler_pex))
+        if illustrator_vs > 0 and illustrator_pex > 0:
+            breakdowns.append(("Illustrator", illustrator_vs, illustrator_pex))
+
+        if len(breakdowns) > 1:
+            r += 1
+            for ci, hdr in enumerate(["Partij", "Voorschot", "Royalty / ex", "Ingelopen bij"], 1):
+                th(ws_res.cell(r, ci), hdr)
+                ws_res.cell(r, ci).alignment = Alignment(horizontal="right" if ci > 1 else "left")
+            r += 1
+            for naam, vs, royalty in breakdowns:
+                ws_res.cell(r, 1).value = naam
+                ws_res.cell(r, 1).font = Font(size=10)
+                val(ws_res.cell(r, 2), vs, "€ #,##0")
+                val(ws_res.cell(r, 3), royalty, "€ #,##0.00")
+                partij_earn = ((int(vs / royalty) + 49) // 50) * 50 if royalty > 0 else None
+                if partij_earn is not None:
+                    val(ws_res.cell(r, 4), partij_earn, "#,##0")
+                r += 1
+
+        # Progress tabel — earn_out_vol altijd als rij opnemen
+        vs_vols = sorted(set(filter(None, [
+            earn_out_vol,
+            totaal_oplage_sim,
+            totaal_oplage_sim + 2500,
+            totaal_oplage_sim + 5000,
+            totaal_oplage_sim + 10000,
+            totaal_oplage_sim + 20000,
+        ])))[:8]
+
+        r += 1
+        for ci, hdr in enumerate(["Oplage", "Royalty's verdiend", "Status"], 1):
+            th(ws_res.cell(r, ci), hdr)
+            ws_res.cell(r, ci).alignment = Alignment(horizontal="right" if ci > 1 else "left")
+        r += 1
+
+        for sv in vs_vols:
+            total_earned = sv * total_recoup_per_ex
+            ingelopen = total_earned >= totaal_vs
+            is_earn_row = (earn_out_vol is not None and sv == earn_out_vol)
+            bg = LICHTGROEN if is_earn_row else WIT
+
+            c_vol = ws_res.cell(r, 1)
+            c_vol.value = f"{sv:,}".replace(",", ".")
+            c_vol.font = Font(size=9, bold=is_earn_row)
+            c_vol.fill = PatternFill("solid", fgColor=bg)
+            val(ws_res.cell(r, 2), total_earned, "€ #,##0", bold=is_earn_row)
+            ws_res.cell(r, 2).fill = PatternFill("solid", fgColor=bg)
+            status_c = ws_res.cell(r, 3)
+            status_c.fill = PatternFill("solid", fgColor=bg)
+            if ingelopen:
+                status_c.value = "✓ Ingelopen"
+                status_c.font = Font(size=9, bold=True, color=GROEN)
+            else:
+                pct_done = total_earned / totaal_vs if totaal_vs > 0 else 0
+                status_c.value = f"Nog open: {(totaal_vs - total_earned):,.0f}".replace(",", ".") + f"  ({pct_done*100:.0f}%)"
+                status_c.font = Font(size=9, color="FFE65100")
+            status_c.alignment = Alignment(horizontal="right")
+            r += 1
 
     # Output
     buf = BytesIO()
@@ -1550,6 +1662,416 @@ def export_excel():
         as_attachment=True,
         download_name=filename,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+# ── PDF Export ──
+
+@bp.route("/api/export/pdf", methods=["POST"])
+def export_pdf():
+    """Exporteer calculatie-resultaat als PDF (A4 staand).
+
+    Bevat: gewogen marge headline, marge-per-kanaal waterfall (1e druk),
+    en oplage-simulatietabel. Opmaak sluit aan op Excel-export.
+    """
+    from io import BytesIO
+    from datetime import date as _date
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer,
+    )
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+
+    data = request.get_json()
+    if not data:
+        abort(400, description="Geen data meegegeven")
+
+    ti = data.get("titel_input", {})
+    verd_ws = data.get("verdeling_webshop", 0.10)
+    verd_rt = data.get("verdeling_retail", 0.85)
+    verd_b2b = data.get("verdeling_b2b", 0.05)
+
+    try:
+        calc = run_calculation(data)
+    except Exception as e:
+        abort(400, description=f"Berekening mislukt: {e}")
+
+    druk0 = calc["drukken"][0] if calc.get("drukken") else {}
+    drukken_cfg = ti.get("drukken", [])
+    totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
+
+    # ── Kleuren (gelijk aan Excel-export) ──
+    C_DONKER = colors.HexColor("#37474F")   # header achtergrond
+    C_WIT = colors.white
+    C_GROEN_DONKER = colors.HexColor("#1B5E20")
+    C_GROEN_LICHT = colors.HexColor("#E8F5E9")
+    C_GRIJS_LICHT = colors.HexColor("#EEEEEE")
+    C_ORANJE = colors.HexColor("#E65100")
+    C_ROOD = colors.HexColor("#C62828")
+
+    def marge_kleur(pct: float):
+        if pct >= 0.35:
+            return C_GROEN_DONKER
+        if pct >= 0:
+            return C_ORANJE
+        return C_ROOD
+
+    # ── Stijlen ──
+    FONT = "Helvetica"
+    FONT_B = "Helvetica-Bold"
+
+    def ps(name, **kwargs):
+        defaults = dict(fontName=FONT, fontSize=9, leading=12)
+        defaults.update(kwargs)
+        return ParagraphStyle(name, **defaults)
+
+    sNorm = ps("norm")
+    sRight = ps("right", alignment=TA_RIGHT)
+    sBold = ps("bold", fontName=FONT_B)
+    sBoldRight = ps("boldright", fontName=FONT_B, alignment=TA_RIGHT)
+    sHeader = ps("header", fontName=FONT_B, fontSize=13, textColor=C_WIT)
+    sSection = ps("section", fontName=FONT_B, fontSize=9, textColor=C_GROEN_DONKER)
+    sMeta = ps("meta", fontSize=8, textColor=colors.HexColor("#666666"))
+
+    buf = BytesIO()
+    W, H = A4
+    margin = 20 * mm
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=margin, rightMargin=margin,
+        topMargin=margin, bottomMargin=margin,
+    )
+
+    story = []
+
+    def spacer(h=3):
+        story.append(Spacer(1, h * mm))
+
+    def section_header(tekst):
+        usable = W - 2 * margin
+        tbl = Table([[Paragraph(tekst, sSection)]], colWidths=[usable])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), C_GROEN_LICHT),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(tbl)
+        spacer(2)
+
+    # ── 1. DOCUMENT HEADER ──
+    usable = W - 2 * margin
+    titel_str = ti.get("titel", "—")
+    auteur_str = ti.get("auteur", "") or "—"
+    isbn_str = ti.get("isbn", "")
+    meta_parts = [auteur_str]
+    if isbn_str:
+        meta_parts.append(f"ISBN {isbn_str}")
+    meta_parts.append(f"Gegenereerd {_date.today().strftime('%d-%m-%Y')}")
+
+    hdr_tbl = Table(
+        [[Paragraph(f"Calculatie — {titel_str}", sHeader)],
+         [Paragraph("  ·  ".join(meta_parts), sMeta)]],
+        colWidths=[usable],
+    )
+    hdr_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (0, 0), C_DONKER),
+        ("TOPPADDING", (0, 0), (0, 0), 8),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 8),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 1), (0, 1), 4),
+        ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+    ]))
+    story.append(hdr_tbl)
+    spacer(4)
+
+    # ── 2. GEWOGEN MARGE ──
+    section_header("GEWOGEN MARGE")
+
+    gewogen_marge = calc.get("gewogen_marge_pct_totaal", 0)
+    if totaal_oplage > 0 and calc.get("drukken"):
+        gw = sum(d["gewogen_netto_winst"] * d["oplage"] for d in calc["drukken"]) / totaal_oplage
+        go = sum(d["gewogen_netto_omzet"] * d["oplage"] for d in calc["drukken"]) / totaal_oplage
+    else:
+        gw = druk0.get("gewogen_netto_winst", 0) if druk0 else 0
+        go = druk0.get("gewogen_netto_omzet", 0) if druk0 else 0
+
+    marge_c = marge_kleur(gewogen_marge)
+    col1 = usable * 0.5
+    col2 = usable * 0.5
+    headline_data = [
+        [Paragraph("Gewogen marge", sBold),
+         Paragraph("Streefmarge", sNorm)],
+        [Paragraph(f'<font color="{marge_c.hexval()}" size="20"><b>{gewogen_marge*100:.1f}%</b></font>', ParagraphStyle("m", alignment=TA_LEFT)),
+         Paragraph("35,0%", ps("s35", fontSize=14, textColor=colors.HexColor("#999999")))],
+        [Paragraph(f"Netto winst per ex: <b>€ {gw:.2f}</b>  ·  Netto omzet per ex: <b>€ {go:.2f}</b>  ·  Totaal exemplaren: <b>{totaal_oplage:,}</b>".replace(",", "."), ps("sub", fontSize=8, textColor=colors.HexColor("#555555"))),
+         Paragraph("")],
+    ]
+    hl_tbl = Table(headline_data, colWidths=[col1, col2])
+    hl_tbl.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("SPAN", (0, 2), (1, 2)),
+    ]))
+    story.append(hl_tbl)
+    spacer(5)
+
+    # ── 3. MARGE PER KANAAL — WATERFALL ──
+    if druk0:
+        oplage_d0 = druk0.get("oplage", 0)
+        section_header(f"MARGE PER KANAAL — 1e druk ({oplage_d0:,} ex.)".replace(",", "."))
+
+        rt = druk0.get("retail", {})
+        ws_d = druk0.get("webshop", {})
+        b2b_k = druk0.get("b2b", {})
+
+        def gew(field):
+            return ws_d.get(field, 0)*verd_ws + rt.get(field, 0)*verd_rt + b2b_k.get(field, 0)*verd_b2b
+
+        def _is_wd(partij):
+            return ti.get(f"{partij}_winstdeling_pct", 0) > 0
+
+        def fmt_eur(v, sign=1):
+            if v == 0:
+                return "—"
+            return f"€ {v*sign:+.2f}".replace("+", "").replace(",", ".")
+
+        def fmt_pct(v):
+            return f"{v*100:.1f}%"
+
+        # Kolom-breedtes: label 150pt + 4×(usable-150)/4
+        lbl_w = 155
+        val_w = (usable - lbl_w) / 4
+
+        wf_headers = ["Kostenregel", "Retail/CB", "Webshop", "B2B", "Gewogen"]
+        wf_rows = [wf_headers]
+        row_styles = []
+        row_idx = 1  # header is row 0
+
+        def add_row(label_txt, rt_v, ws_v, b2b_v, gew_v, bold=False, bg=None, is_marge=False):
+            nonlocal row_idx
+            sL = sBold if bold else sNorm
+            sR = sBoldRight if bold else sRight
+
+            if is_marge:
+                rt_p = Paragraph(f'<font color="{marge_kleur(rt_v).hexval()}"><b>{fmt_pct(rt_v)}</b></font>', sRight)
+                ws_p = Paragraph(f'<font color="{marge_kleur(ws_v).hexval()}"><b>{fmt_pct(ws_v)}</b></font>', sRight)
+                b2b_p = Paragraph(f'<font color="{marge_kleur(b2b_v).hexval()}"><b>{fmt_pct(b2b_v)}</b></font>', sRight)
+                gw_pct = gew("netto_winst_maven") / gew("netto_omzet") if gew("netto_omzet") > 0 else 0
+                gew_p = Paragraph(f'<font color="{marge_kleur(gw_pct).hexval()}"><b>{fmt_pct(gw_pct)}</b></font>', sRight)
+                wf_rows.append([Paragraph(label_txt, sL), rt_p, ws_p, b2b_p, gew_p])
+            else:
+                wf_rows.append([
+                    Paragraph(label_txt, sL),
+                    Paragraph(fmt_eur(rt_v), sR),
+                    Paragraph(fmt_eur(ws_v), sR),
+                    Paragraph(fmt_eur(b2b_v), sR),
+                    Paragraph(fmt_eur(gew_v), sR),
+                ])
+
+            if bg:
+                row_styles.append(("BACKGROUND", (0, row_idx), (-1, row_idx), bg))
+            if bold:
+                row_styles.append(("FONTNAME", (0, row_idx), (-1, row_idx), FONT_B))
+            row_idx += 1
+
+        def add_sep():
+            nonlocal row_idx
+            wf_rows.append(["", "", "", "", ""])
+            row_styles.append(("LINEBELOW", (0, row_idx - 1), (-1, row_idx - 1), 0.3, C_GRIJS_LICHT))
+
+        # Omzet
+        add_row("Verkoopprijs ex BTW",
+                rt.get("verkoopprijs_ex_btw", 0), ws_d.get("verkoopprijs_ex_btw", 0), b2b_k.get("verkoopprijs_ex_btw", 0), gew("verkoopprijs_ex_btw"))
+        if gew("korting_bedrag") > 0:
+            add_row("  Korting",
+                    -rt.get("korting_bedrag", 0), -ws_d.get("korting_bedrag", 0), -b2b_k.get("korting_bedrag", 0), -gew("korting_bedrag"))
+        add_row("Netto omzet",
+                rt.get("netto_omzet", 0), ws_d.get("netto_omzet", 0), b2b_k.get("netto_omzet", 0), gew("netto_omzet"),
+                bold=True, bg=C_GRIJS_LICHT)
+
+        # Operationele kosten
+        def add_if_nonzero(lbl, field):
+            if gew(field) > 0 or any(k.get(field, 0) for k in (rt, ws_d, b2b_k)):
+                add_row(f"  {lbl}",
+                        -rt.get(field, 0), -ws_d.get(field, 0), -b2b_k.get(field, 0), -gew(field))
+
+        add_if_nonzero("Drukkosten /ex", "drukkosten")
+        add_if_nonzero("Kostenposten /ex", "kosten_per_ex")
+        add_if_nonzero("Fulfillment", "fulfillment")
+        add_if_nonzero("Distributie CB", "distributie_cb")
+        add_if_nonzero("B2B porto", "b2b_porto")
+        add_if_nonzero("Transactiekosten", "transactiekosten")
+        add_if_nonzero("CAC", "cac")
+
+        # Royalty-derden boven brutowinst
+        if not _is_wd("auteur") and gew("auteur_royalty") > 0:
+            add_if_nonzero("Auteur royalty", "auteur_royalty")
+        if not _is_wd("vertaler") and gew("vertaler") > 0:
+            add_if_nonzero("Vertaler", "vertaler")
+        if not _is_wd("illustrator") and gew("illustrator") > 0:
+            add_if_nonzero("Illustrator", "illustrator")
+        if not _is_wd("agent") and gew("agent") > 0:
+            add_if_nonzero("Agent", "agent")
+
+        # Extra royalty-derden per naam
+        extra_namen_royalty: set = set()
+        for kd in (rt, ws_d, b2b_k):
+            for ed in (kd.get("extra_derden_per_naam") or []):
+                if ed.get("type") == "royalty":
+                    extra_namen_royalty.add(ed.get("naam", "Extra"))
+        for nm in sorted(extra_namen_royalty):
+            def _ev(kd, n=nm):
+                return sum(x["bedrag"] for x in (kd.get("extra_derden_per_naam") or []) if x["type"] == "royalty" and x["naam"] == n)
+            add_row(f"  {nm}",
+                    -_ev(rt), -_ev(ws_d), -_ev(b2b_k),
+                    -(_ev(rt)*verd_rt + _ev(ws_d)*verd_ws + _ev(b2b_k)*verd_b2b))
+
+        add_if_nonzero("Overige kosten", "overige_kosten")
+        add_row("Brutowinst",
+                rt.get("brutowinst", 0), ws_d.get("brutowinst", 0), b2b_k.get("brutowinst", 0), gew("brutowinst"),
+                bold=True, bg=C_GRIJS_LICHT)
+
+        # Winstdeling-derden onder brutowinst
+        if gew("auteur_winstdeling") > 0:
+            add_if_nonzero("Auteur winstdeling", "auteur_winstdeling")
+        if _is_wd("vertaler") and gew("vertaler") > 0:
+            add_row("  Vertaler (winstdeling)",
+                    -rt.get("vertaler", 0), -ws_d.get("vertaler", 0), -b2b_k.get("vertaler", 0), -gew("vertaler"))
+        if _is_wd("illustrator") and gew("illustrator") > 0:
+            add_row("  Illustrator (winstdeling)",
+                    -rt.get("illustrator", 0), -ws_d.get("illustrator", 0), -b2b_k.get("illustrator", 0), -gew("illustrator"))
+        if _is_wd("agent") and gew("agent") > 0:
+            add_row("  Agent (winstdeling)",
+                    -rt.get("agent", 0), -ws_d.get("agent", 0), -b2b_k.get("agent", 0), -gew("agent"))
+
+        extra_namen_wd: set = set()
+        for kd in (rt, ws_d, b2b_k):
+            for ed in (kd.get("extra_derden_per_naam") or []):
+                if ed.get("type") == "winstdeling":
+                    extra_namen_wd.add(ed.get("naam", "Extra"))
+        for nm in sorted(extra_namen_wd):
+            def _evw(kd, n=nm):
+                return sum(x["bedrag"] for x in (kd.get("extra_derden_per_naam") or []) if x["type"] == "winstdeling" and x["naam"] == n)
+            add_row(f"  {nm} (winstdeling)",
+                    -_evw(rt), -_evw(ws_d), -_evw(b2b_k),
+                    -(_evw(rt)*verd_rt + _evw(ws_d)*verd_ws + _evw(b2b_k)*verd_b2b))
+
+        add_row("Netto winst Maven",
+                rt.get("netto_winst_maven", 0), ws_d.get("netto_winst_maven", 0), b2b_k.get("netto_winst_maven", 0), gew("netto_winst_maven"),
+                bold=True, bg=C_GRIJS_LICHT)
+        add_row("Marge %",
+                rt.get("marge_pct", 0), ws_d.get("marge_pct", 0), b2b_k.get("marge_pct", 0), 0,
+                bold=True, is_marge=True)
+
+        if ti.get("heeft_partner") and gew("partner_winstdeling") > 0:
+            add_row("  Partner-winstdeling (informatief)",
+                    -rt.get("partner_winstdeling", 0), -ws_d.get("partner_winstdeling", 0),
+                    -b2b_k.get("partner_winstdeling", 0), -gew("partner_winstdeling"))
+
+        wf_tbl = Table(wf_rows, colWidths=[lbl_w, val_w, val_w, val_w, val_w])
+        base_style = [
+            ("FONTNAME", (0, 0), (-1, 0), FONT_B),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BACKGROUND", (0, 0), (-1, 0), C_GRIJS_LICHT),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#CCCCCC")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_WIT, colors.HexColor("#FAFAFA")]),
+        ] + row_styles
+        wf_tbl.setStyle(TableStyle(base_style))
+        story.append(wf_tbl)
+        spacer(5)
+
+    # ── 4. OPLAGE SIMULATIE ──
+    # Gebruik de simulate/oplage API-logica rechtstreeks via run_calculation data
+    try:
+        from flask import current_app
+        with current_app.test_client() as client:
+            sim_resp = client.post(
+                "/calculatie/api/simulate/oplage",
+                json=data,
+                content_type="application/json",
+            )
+            sim_data = sim_resp.get_json() if sim_resp.status_code == 200 else None
+    except Exception:
+        sim_data = None
+
+    if sim_data and sim_data.get("rows"):
+        section_header("OPLAGE SIMULATIE")
+
+        sim_hdrs = ["Oplage", "Netto omzet", "Drukkosten", "Eenm. kosten", "Dealkosten", "Netto resultaat", "Marge %"]
+        sim_rows = [sim_hdrs]
+        sim_styles = []
+        si = 1
+        for row in sim_data["rows"]:
+            is_be = row.get("is_break_even", False)
+            bg = C_GROEN_LICHT if is_be else C_WIT
+            vol = row.get("oplage", 0)
+            lbl = f"{vol:,}".replace(",", ".") + ("  ← break-even" if is_be else "")
+            marge_v = row.get("marge_pct", 0)
+            sim_rows.append([
+                Paragraph(lbl, sBold if is_be else sNorm),
+                Paragraph(f"€ {row.get('omzet', 0):,.0f}".replace(",", "."), sRight),
+                Paragraph(f"€ {row.get('kosten', 0) - row.get('eenmalig', 0) - row.get('dealkosten', 0):,.0f}".replace(",", "."), sRight),
+                Paragraph(f"€ {row.get('eenmalig', 0):,.0f}".replace(",", "."), sRight),
+                Paragraph(f"€ {row.get('dealkosten', 0):,.0f}".replace(",", "."), sRight),
+                Paragraph(f"€ {row.get('netto_resultaat', 0):,.0f}".replace(",", "."), sBoldRight if is_be else sRight),
+                Paragraph(
+                    f'<font color="{marge_kleur(marge_v).hexval()}"><b>{marge_v*100:.1f}%</b></font>',
+                    sRight
+                ),
+            ])
+            if bg != C_WIT:
+                sim_styles.append(("BACKGROUND", (0, si), (-1, si), bg))
+            si += 1
+
+        sim_col_w = usable / 7
+        sim_lbl_w = usable - 6 * sim_col_w
+        sim_tbl = Table(sim_rows, colWidths=[sim_lbl_w] + [sim_col_w] * 6)
+        sim_tbl.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (-1, 0), FONT_B),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("BACKGROUND", (0, 0), (-1, 0), C_GRIJS_LICHT),
+            ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "LEFT"),
+            ("TOPPADDING", (0, 0), (-1, -1), 2),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#CCCCCC")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [C_WIT, colors.HexColor("#FAFAFA")]),
+        ] + sim_styles))
+        story.append(sim_tbl)
+        spacer(3)
+        note = Paragraph(
+            "Dealkosten = voorschotten + royalty's en commissies aan alle partijen, inclusief winstdeling.",
+            ps("note", fontSize=7, textColor=colors.HexColor("#888888")),
+        )
+        story.append(note)
+
+    doc.build(story)
+    buf.seek(0)
+
+    titel_slug = (ti.get("titel", "calculatie") or "calculatie").replace(" ", "_")[:30]
+    filename = f"calculatie_{titel_slug}.pdf"
+
+    from flask import send_file
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/pdf",
     )
 
 
