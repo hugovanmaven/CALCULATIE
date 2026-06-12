@@ -2,9 +2,11 @@ import { useState } from 'react';
 import type { CalculateResponse, TitelInput, SensitivityResponse, OplageSimResponse } from '../../api/types';
 import { ChevronDown, ChevronRight, Download } from 'lucide-react';
 
-// Streefmarge: 35% van wat er na kortingen + BTW binnenkomt (netto-omzet).
-// Voor de kanaal-tiles wordt deze regel intern omgerekend naar VKP-ex-BTW
-// basis zodat de drie getallen direct vergelijkbaar zijn.
+// Streefmarge: 35% van wat er na kortingen + BTW binnenkomt (netto-omzet),
+// per kanaal toegepast op de eigen netto-omzet. Het euro-doel is daardoor
+// hoger bij webshop en lager (min de boekhandelskorting) bij CB.
+// De kleurcode hangt alleen aan de gewogen marge bovenin; in de kanaal-tiles
+// wordt de marge neutraal getoond (alleen de verhouding t.o.v. 35% telt).
 const STREEFMARGE = {
   retail: 0.35,
   webshop: 0.35,
@@ -164,18 +166,11 @@ function KanaalCards({ druk, verdeling }: { druk: any; verdeling: { webshop: num
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {kanalen.map(k => {
-        // Marge per kanaal getoond t.o.v. verkoopprijs ex BTW (één gemeenschappelijke noemer
-        // over alle kanalen, zodat absolute waarde direct vergelijkbaar is).
-        // Streefmarge is 35% van de netto-omzet van dat kanaal — uitgedrukt in
-        // verkoopprijs-ex-BTW-eenheden wordt dat 0,35 × (netto_omzet / VKP_ex_btw).
-        const vkpExBtw = k.data.verkoopprijs_ex_btw || k.data.netto_omzet;
-        const margeOpVkp = vkpExBtw > 0 ? k.data.netto_winst_maven / vkpExBtw : 0;
-        const streefOpVkp = vkpExBtw > 0 ? STREEFMARGE.gewogen * (k.data.netto_omzet / vkpExBtw) : 0;
-        const cls = margeOpVkp >= streefOpVkp
-          ? 'bg-emerald-50 text-emerald-700 ring-emerald-600/20'
-          : margeOpVkp >= streefOpVkp * 0.6
-          ? 'bg-amber-50 text-amber-700 ring-amber-600/20'
-          : 'bg-red-50 text-red-700 ring-red-600/20';
+        // Marge per kanaal t.o.v. de eigen netto-omzet van dat kanaal.
+        // Streefmarge = 35% van die netto-omzet (plat percentage voor elk kanaal);
+        // het euro-doel is daardoor vanzelf hoger bij webshop en lager bij CB.
+        const marge = k.data.netto_omzet > 0 ? k.data.netto_winst_maven / k.data.netto_omzet : 0;
+        const streef = STREEFMARGE[k.key as KanaalSleutel];
         return (
         <div key={k.key} className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
@@ -183,8 +178,8 @@ function KanaalCards({ druk, verdeling }: { druk: any; verdeling: { webshop: num
             <span className="text-[10px] text-[var(--text-tertiary)]">{(k.pct * 100).toFixed(0)}%</span>
           </div>
           <div className="text-2xl font-bold text-[var(--text-primary)] mb-1.5 tabular-nums">&euro; {fmt(k.data.netto_winst_maven)}</div>
-          <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset ${cls}`}>
-            {pct(margeOpVkp)} marge <span className="opacity-60 ml-1">/ streef {pct(streefOpVkp)}</span>
+          <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset bg-[var(--bg-primary)] text-[var(--text-secondary)] ring-[var(--border)]">
+            {pct(marge)} marge <span className="opacity-60 ml-1">/ streef {pct(streef)}</span>
           </span>
           <div className="mt-3 text-[11px] text-[var(--text-tertiary)] space-y-0.5">
             <div className="flex justify-between"><span>Netto omzet</span><span className="tabular-nums">&euro; {fmt(k.data.netto_omzet)}</span></div>
