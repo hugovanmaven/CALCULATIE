@@ -5,13 +5,28 @@ import type {
 
 const BASE = '/calculatie/api';
 
+/** Error die de HTTP-status meedraagt, zodat callers bv. 409 (conflict) kunnen herkennen. */
+export class ApiError extends Error {
+  status: number;
+  body: any;
+  constructor(status: number, body?: any) {
+    super(`API error: ${status}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(BASE + path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, errBody);
+  }
   return res.json();
 }
 
@@ -69,6 +84,7 @@ export async function saveTitel(data: {
   verdeling_retail: number;
   verdeling_b2b: number;
   titelgroep_id?: string | null;
+  version?: number | null;
 }): Promise<StoredTitel> {
   return post('/titels', data);
 }

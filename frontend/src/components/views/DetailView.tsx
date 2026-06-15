@@ -2,7 +2,7 @@ import { useTitelDetail } from '../../hooks/useTitelDetail';
 import { CalculatieForm } from '../form/CalculatieForm';
 import { UnifiedDashboard } from '../results/UnifiedDashboard';
 import { ExportButtons } from '../export/ExportButtons';
-import { ArrowLeft, Loader2, Check, Circle } from 'lucide-react';
+import { ArrowLeft, Loader2, Check, Circle, AlertTriangle } from 'lucide-react';
 
 interface Props {
   titelId: string;
@@ -15,6 +15,7 @@ export default function DetailView({ titelId, onBack }: Props) {
     verdeling, setVerdeling,
     titelgroepId, setTitelgroepId,
     dirty, loaded,
+    conflict, reloadTitel,
     results, cacSens, priceSens, oplageSim, loading,
   } = useTitelDetail(titelId);
 
@@ -30,6 +31,24 @@ export default function DetailView({ titelId, onBack }: Props) {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
+      {/* Conflict-banner: iemand anders heeft deze titel intussen opgeslagen */}
+      {conflict && (
+        <div className="sticky top-0 z-50 bg-amber-500 text-amber-950 px-4 py-2.5 flex items-center justify-between gap-3 shadow">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <AlertTriangle size={18} />
+            <span>
+              Iemand anders heeft deze titel intussen opgeslagen. Je wijzigingen
+              worden niet bewaard tot je herlaadt.
+            </span>
+          </div>
+          <button
+            onClick={reloadTitel}
+            className="shrink-0 rounded-md bg-amber-950 text-amber-50 px-3 py-1.5 text-sm font-semibold hover:bg-amber-900"
+          >
+            Nieuwste versie laden
+          </button>
+        </div>
+      )}
       {/* Header */}
       <header className="bg-[var(--bg-secondary)] border-b border-[var(--border)] sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between">
