@@ -196,6 +196,7 @@ export interface StoredTitel {
   verdeling_b2b: number;
   archived?: boolean;
   titelgroep_id?: string | null;
+  version?: number;
 }
 
 export interface TitelListItem {

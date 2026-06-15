@@ -428,8 +428,19 @@ def save_titel():
         "titelgroep_id": data.get("titelgroep_id"),
     }
 
-    storage.save_titel(titel_id, titel_data)
-    return jsonify({"id": titel_id, **titel_data})
+    # Optimistic locking: client stuurt de versie mee die hij laadde. Wijkt die
+    # af van wat nu in de DB staat, dan heeft iemand anders intussen opgeslagen.
+    expected_version = data.get("version")
+    try:
+        saved = storage.save_titel(titel_id, titel_data, expected_version=expected_version)
+    except storage.ConcurrentEditError as exc:
+        return jsonify({
+            "error": "conflict",
+            "message": "Deze titel is intussen door iemand anders aangepast. "
+                       "Herlaad de titel om de nieuwste versie te zien.",
+            "current_version": exc.current_version,
+        }), 409
+    return jsonify({"id": titel_id, **saved})
 
 
 @bp.route("/api/titels/<titel_id>", methods=["DELETE"])
@@ -441,21 +452,15 @@ def delete_titel(titel_id):
 
 @bp.route("/api/titels/<titel_id>/archive", methods=["PATCH"])
 def archive_titel(titel_id):
-    data = storage.get_titel(titel_id)
-    if data is None:
+    if storage.set_archived(titel_id, True) is None:
         abort(404, description="Titel niet gevonden")
-    data["archived"] = True
-    storage.save_titel(titel_id, data)
     return jsonify(ok=True)
 
 
 @bp.route("/api/titels/<titel_id>/unarchive", methods=["PATCH"])
 def unarchive_titel(titel_id):
-    data = storage.get_titel(titel_id)
-    if data is None:
+    if storage.set_archived(titel_id, False) is None:
         abort(404, description="Titel niet gevonden")
-    data["archived"] = False
-    storage.save_titel(titel_id, data)
     return jsonify(ok=True)
 
 
