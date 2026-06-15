@@ -36,6 +36,25 @@ TITELS_FILE = DATA_DIR / "calculatie_titels.json"  # legacy + migratie-bron
 BACKUP_DIR = DATA_DIR / "backups"
 MAX_BACKUPS = 30
 
+# Minimaal interval tussen twee JSON-vangrail-backups. Bij autosave (elke 1,5s)
+# en meerdere gebruikers zou backuppen-per-save de hele DB telkens dumpen; dat is
+# verspilling naast Railway's eigen Postgres-backups. We backuppen hooguit eens
+# per BACKUP_THROTTLE_SECONDS, bepaald aan de mtime van de nieuwste backup (zodat
+# het ook klopt over meerdere gunicorn-workers heen).
+BACKUP_THROTTLE_SECONDS = 300
+
+
+class ConcurrentEditError(Exception):
+    """Geheven als een save botst met een nieuwere versie in de DB.
+
+    Vertaalt in de route naar HTTP 409 Conflict. ``current_version`` is de
+    versie die nú in de DB staat, zodat de client kan herladen.
+    """
+
+    def __init__(self, current_version: int):
+        self.current_version = current_version
+        super().__init__("Titel is inmiddels door iemand anders gewijzigd")
+
 
 def _ensure_dirs():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -104,6 +123,7 @@ def titel_to_dict(t) -> dict:
         "verdeling_b2b": _decimal_to_float(t.verdeling_b2b),
         "archived": bool(t.archived),
         "titelgroep_id": t.titelgroep_id,
+        "version": int(t.version or 1),
     }
 
 
@@ -151,24 +171,73 @@ def get_titel(titel_id: str) -> dict | None:
     return titel_to_dict(t) if t else None
 
 
-def save_titel(titel_id: str, titel_data: dict) -> dict:
-    """Maak nieuw of update bestaande titel. Backupt vóór de write."""
+def save_titel(titel_id: str, titel_data: dict, expected_version: int | None = None) -> dict:
+    """Maak nieuw of update bestaande titel. Backupt (getthrottled) vóór de write.
+
+    Optimistic locking: als ``expected_version`` is meegegeven en niet
+    overeenkomt met de versie in de DB, weigeren we met ``ConcurrentEditError``
+    in plaats van stil te overschrijven. Bij elke geslaagde update telt de
+    versie op.
+    """
     from .db import db, Titel
-    _backup_current_to_json()
+    from sqlalchemy.orm.exc import StaleDataError
 
     t = db.session.get(Titel, titel_id)
-    if t is None:
+    is_new = t is None
+
+    # Cross-request-check: de client laadde versie X, maar inmiddels staat er
+    # een nieuwere in de DB → iemand anders heeft tussendoor opgeslagen.
+    if not is_new and expected_version is not None:
+        current = int(t.version or 1)
+        if current != expected_version:
+            db.session.rollback()
+            raise ConcurrentEditError(current)
+
+    _backup_current_to_json()
+
+    if is_new:
         t = Titel(id=titel_id, titel="")
         db.session.add(t)
-
     _apply_dict_to_titel(t, titel_data)
-    db.session.commit()
+
+    # Het ophogen van version laten we aan version_id_col over (atomair).
+    try:
+        db.session.commit()
+    except StaleDataError:
+        # Twee saves tegelijk: deze verloor de race nipt van een ander.
+        db.session.rollback()
+        fresh = db.session.get(Titel, titel_id)
+        raise ConcurrentEditError(int(fresh.version) if fresh else (expected_version or 1))
     return titel_to_dict(t)
+
+
+def set_archived(titel_id: str, archived: bool) -> dict | None:
+    """Werk alléén de archived-vlag bij.
+
+    Een gerichte update i.p.v. een volledige read-modify-write, zodat
+    archiveren een gelijktijdige edit van dezelfde titel niet overschrijft.
+    version_id_col hoogt de versie atomair op; botst dat met een gelijktijdige
+    save, dan proberen we één keer opnieuw (een vlag-toggle is altijd veilig
+    her-toepasbaar).
+    """
+    from .db import db, Titel
+    from sqlalchemy.orm.exc import StaleDataError
+    for _ in range(2):
+        t = db.session.get(Titel, titel_id)
+        if t is None:
+            return None
+        t.archived = bool(archived)
+        try:
+            db.session.commit()
+            return titel_to_dict(t)
+        except StaleDataError:
+            db.session.rollback()
+    raise ConcurrentEditError(0)
 
 
 def delete_titel(titel_id: str) -> bool:
     from .db import db, Titel
-    _backup_current_to_json()
+    _backup_current_to_json(force=True)
     t = db.session.get(Titel, titel_id)
     if t is None:
         return False
@@ -184,6 +253,29 @@ def new_id() -> str:
 # ──────────────────────────────────────────────────────────────────────
 #  MIGRATIE: JSON → DB
 # ──────────────────────────────────────────────────────────────────────
+
+def ensure_schema():
+    """Lichte, idempotente schema-migratie.
+
+    ``db.create_all()`` maakt ontbrekende tabellen, maar muteert bestaande
+    tabellen niet. Voor kolommen die ná de eerste deploy zijn toegevoegd
+    (zoals ``version`` voor optimistic locking) voegen we ze hier alsnog toe.
+    Werkt op zowel Postgres als SQLite; veilig om bij elke startup te draaien.
+    """
+    from sqlalchemy import inspect, text
+    from .db import db
+
+    insp = inspect(db.engine)
+    if "titels" not in insp.get_table_names():
+        return  # create_all heeft 'm nog niet aangemaakt; niets te migreren
+    cols = {c["name"] for c in insp.get_columns("titels")}
+    if "version" not in cols:
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE titels ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+            ))
+        print("[storage] schema: kolom 'version' toegevoegd aan titels")
+
 
 def migrate_from_json_if_needed():
     """Als de DB leeg is én er staat een JSON-bestand, neem die mee over.
@@ -241,10 +333,30 @@ def migrate_from_json_if_needed():
 #  BACKUP / RESTORE
 # ──────────────────────────────────────────────────────────────────────
 
-def _backup_current_to_json():
-    """Dump huidige DB-state als JSON-bestand. Houd laatste 30 versies."""
+def _recent_backup_exists(within_seconds: int) -> bool:
+    """True als de nieuwste backup jonger is dan within_seconds.
+
+    Gebaseerd op bestand-mtime zodat de throttle ook klopt over meerdere
+    gunicorn-workers (los geheugen) heen.
+    """
+    try:
+        backups = BACKUP_DIR.glob("calculatie_titels_*.json")
+        newest = max((b.stat().st_mtime for b in backups), default=0)
+    except OSError:
+        return False
+    return (datetime.now().timestamp() - newest) < within_seconds
+
+
+def _backup_current_to_json(force: bool = False):
+    """Dump huidige DB-state als JSON-bestand. Houd laatste 30 versies.
+
+    Getthrottled: slaat over als er recent (binnen BACKUP_THROTTLE_SECONDS) al
+    een backup is gemaakt, tenzij force=True (bv. vóór een restore/import).
+    """
     try:
         _ensure_dirs()
+        if not force and _recent_backup_exists(BACKUP_THROTTLE_SECONDS):
+            return
         from .db import db, Titel
 
         snapshot = {}
@@ -254,7 +366,9 @@ def _backup_current_to_json():
         if not snapshot:
             return  # niets om te backuppen
 
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Microseconden + korte uuid: voorkomt dat twee gelijktijdige workers
+        # in dezelfde seconde elkaars backup-bestand overschrijven.
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         backup_path = BACKUP_DIR / f"calculatie_titels_{ts}.json"
         with open(backup_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, ensure_ascii=False, indent=2)
@@ -306,7 +420,7 @@ def restore_backup(name: str) -> bool:
     if not isinstance(data, dict):
         return False
 
-    _backup_current_to_json()
+    _backup_current_to_json(force=True)
 
     # Volledig vervangen: delete + insert
     db.session.query(Titel).delete()
@@ -372,7 +486,7 @@ def save_titelgroep(groep_id: str | None, data: dict) -> dict:
 def delete_titelgroep(groep_id: str) -> bool:
     """Verwijder een groep. Titels in die groep krijgen titelgroep_id = NULL."""
     from .db import db, Titelgroep, Titel
-    _backup_current_to_json()
+    _backup_current_to_json(force=True)
     g = db.session.get(Titelgroep, groep_id)
     if g is None:
         return False
@@ -392,7 +506,7 @@ def delete_titelgroep(groep_id: str) -> bool:
 def import_data(new_data: dict, mode: str = "merge") -> int:
     """Importeer titels uit een dict. Retourneert aantal geïmporteerd."""
     from .db import db, Titel
-    _backup_current_to_json()
+    _backup_current_to_json(force=True)
 
     if mode == "replace":
         db.session.query(Titel).delete()

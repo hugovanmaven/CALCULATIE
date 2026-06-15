@@ -3,6 +3,7 @@ import type { TitelInput, CalculateResponse, SensitivityResponse, OplageSimRespo
 import { DEFAULT_TITEL_INPUT, DEFAULT_KOSTENPOSTEN, DEFAULT_DRUK } from '../api/types';
 import {
   getTitel, saveTitel, calculate, sensitivityCac, sensitivityPrice, simulateOplage,
+  ApiError,
 } from '../api/client';
 import { useDebounce } from './useDebounce';
 
@@ -11,6 +12,7 @@ export interface TitelDetailState {
   titelInput: TitelInput;
   verdeling: { webshop: number; retail: number; b2b: number };
   titelgroepId: string | null;
+  version: number | null;
   dirty: boolean;
 }
 
@@ -51,6 +53,7 @@ function newTitelState(): TitelDetailState {
     titelInput: { ...DEFAULT_TITEL_INPUT, drukken: [{ ...DEFAULT_DRUK }] },
     verdeling: { webshop: 0.10, retail: 0.90, b2b: 0.00 },
     titelgroepId: null,
+    version: null,
     dirty: false,
   };
 }
@@ -66,6 +69,7 @@ export function useTitelDetail(titelId: string | null) {
   const [oplageSim, setOplageSim] = useState<OplageSimResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [conflict, setConflict] = useState(false);
   const saveInProgress = useRef(false);
 
   // ── Load titel from backend ──
@@ -76,6 +80,7 @@ export function useTitelDetail(titelId: string | null) {
       setCacSens(null);
       setPriceSens(null);
       setOplageSim(null);
+      setConflict(false);
       setLoaded(true);
       return;
     }
@@ -94,8 +99,10 @@ export function useTitelDetail(titelId: string | null) {
           b2b: st.verdeling_b2b ?? 0.05,
         },
         titelgroepId: st.titelgroep_id ?? null,
+        version: st.version ?? null,
         dirty: false,
       });
+      setConflict(false);
     } catch (e) {
       console.error('Failed to load titel:', e);
       setState(newTitelState());
@@ -103,13 +110,26 @@ export function useTitelDetail(titelId: string | null) {
     setLoaded(true);
   };
 
+  /** Herlaad de huidige titel vanuit de DB en hef de conflict-staat op. */
+  const reloadTitel = useCallback(() => {
+    if (state.id) loadTitel(state.id);
+  }, [state.id]);
+
   // ── Auto-save (debounced 1500ms) ──
   const debouncedState = useDebounce(state, 1500);
 
   useEffect(() => {
-    if (!loaded || !debouncedState.dirty || saveInProgress.current) return;
+    // Bij een open conflict pauzeren we autosave: anders zouden we de
+    // wijziging van de ander tóch overschrijven zodra de versie weer klopt.
+    if (!loaded || conflict || !debouncedState.dirty || saveInProgress.current) return;
+    // Alleen de huidige, gesettelde state opslaan. useDebounce geeft ná de
+    // wachttijd exact dezelfde object-referentie als `state` terug; zolang ze
+    // verschillen is de snapshot verouderd. Dit voorkomt dat een achterlopende
+    // snapshot (bv. vlak na "Nieuwste versie laden") een verouderde save afvuurt
+    // en zo het conflict meteen weer oproept.
+    if (debouncedState !== state) return;
     autoSave(debouncedState);
-  }, [debouncedState, loaded]);
+  }, [debouncedState, state, loaded, conflict]);
 
   const autoSave = useCallback(async (s: TitelDetailState) => {
     if (!s.titelInput.titel && s.titelInput.verkoopprijs_incl_btw === 0) return;
@@ -122,13 +142,19 @@ export function useTitelDetail(titelId: string | null) {
         verdeling_retail: s.verdeling.retail,
         verdeling_b2b: s.verdeling.b2b,
         titelgroep_id: s.titelgroepId,
+        version: s.version,
       });
       setState(prev => prev.id === s.id || (!prev.id && !s.id)
-        ? { ...prev, id: saved.id, dirty: false }
+        ? { ...prev, id: saved.id, version: saved.version ?? prev.version, dirty: false }
         : prev
       );
     } catch (e) {
-      console.error('Auto-save failed:', e);
+      if (e instanceof ApiError && e.status === 409) {
+        // Iemand anders heeft deze titel intussen opgeslagen.
+        setConflict(true);
+      } else {
+        console.error('Auto-save failed:', e);
+      }
     }
     saveInProgress.current = false;
   }, []);
@@ -194,6 +220,8 @@ export function useTitelDetail(titelId: string | null) {
     dirty: state.dirty,
     id: state.id,
     loaded,
+    conflict,
+    reloadTitel,
     results, cacSens, priceSens, oplageSim, loading,
   };
 }

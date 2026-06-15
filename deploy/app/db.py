@@ -11,7 +11,7 @@ Op Postgres gebruikt SQLAlchemy automatisch JSONB voor de JSON-kolommen.
 from datetime import datetime
 
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import Column, String, Text, Boolean, Numeric, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, String, Text, Boolean, Numeric, DateTime, JSON, ForeignKey, Integer
 from sqlalchemy.orm import relationship
 
 db = SQLAlchemy()
@@ -105,6 +105,17 @@ class Titel(db.Model):
     archived = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # ── Optimistic concurrency control ──
+    # Telt op bij elke save. De client stuurt de versie die hij laadde mee;
+    # is die verouderd, dan weigert de server (409) i.p.v. stil te overschrijven.
+    # version_id_col laat SQLAlchemy de versie atomair ophogen én elke UPDATE
+    # voorzien van "WHERE version = <geladen>", zodat twee gelijktijdige saves
+    # (meerdere workers/threads) niet allebei kunnen slagen — de verliezer
+    # krijgt StaleDataError.
+    version = Column(Integer, nullable=False, default=1)
+
+    __mapper_args__ = {"version_id_col": version}
 
     # ── Geneste collecties (JSON / JSONB op Postgres) ──
     drukken = Column(JSON, default=list)
