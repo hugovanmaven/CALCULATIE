@@ -464,6 +464,31 @@ def unarchive_titel(titel_id):
     return jsonify(ok=True)
 
 
+# ── Versiegeschiedenis ──
+
+@bp.route("/api/titels/<titel_id>/historie", methods=["GET"])
+def titel_historie(titel_id):
+    if storage.get_titel(titel_id) is None:
+        abort(404, description="Titel niet gevonden")
+    return jsonify(storage.list_historie(titel_id))
+
+
+@bp.route("/api/titels/<titel_id>/historie/<entry_id>/restore", methods=["POST"])
+def titel_historie_restore(titel_id, entry_id):
+    try:
+        restored = storage.restore_historie(titel_id, entry_id)
+    except storage.ConcurrentEditError as exc:
+        return jsonify({
+            "error": "conflict",
+            "message": "Deze titel is intussen door iemand anders aangepast. "
+                       "Herlaad de titel voordat je terugzet.",
+            "current_version": exc.current_version,
+        }), 409
+    if restored is None:
+        abort(404, description="Titel of geschiedenis-moment niet gevonden")
+    return jsonify({"id": titel_id, **restored})
+
+
 # ── Titelgroepen CRUD ──
 
 @bp.route("/api/titelgroepen", methods=["GET"])

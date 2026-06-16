@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { useTitelDetail } from '../../hooks/useTitelDetail';
 import { CalculatieForm } from '../form/CalculatieForm';
 import { UnifiedDashboard } from '../results/UnifiedDashboard';
 import { ExportButtons } from '../export/ExportButtons';
-import { ArrowLeft, Loader2, Check, Circle, AlertTriangle } from 'lucide-react';
+import HistoriePanel from './HistoriePanel';
+import { ArrowLeft, Loader2, Check, Circle, AlertTriangle, History as HistoryIcon } from 'lucide-react';
 
 interface Props {
   titelId: string;
@@ -18,6 +20,8 @@ export default function DetailView({ titelId, onBack }: Props) {
     conflict, reloadTitel,
     results, cacSens, priceSens, oplageSim, loading,
   } = useTitelDetail(titelId);
+
+  const [showHistorie, setShowHistorie] = useState(false);
 
   const firstDruk = titelInput.drukken?.[0];
 
@@ -90,6 +94,14 @@ export default function DetailView({ titelId, onBack }: Props) {
               )}
             </span>
             {loading && <Loader2 size={16} className="animate-spin text-[var(--accent)]" />}
+            <button
+              onClick={() => setShowHistorie(true)}
+              className="flex items-center gap-1.5 rounded-md border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] transition-colors"
+              title="Versiegeschiedenis bekijken"
+            >
+              <HistoryIcon size={14} />
+              <span className="hidden sm:inline">Geschiedenis</span>
+            </button>
             <ExportButtons
               titelInput={titelInput}
               verdeling={verdeling}
@@ -97,6 +109,14 @@ export default function DetailView({ titelId, onBack }: Props) {
           </div>
         </div>
       </header>
+
+      {showHistorie && (
+        <HistoriePanel
+          titelId={titelId}
+          onClose={() => setShowHistorie(false)}
+          onRestored={() => { reloadTitel(); setShowHistorie(false); }}
+        />
+      )}
 
       {/* Content: on mobile results first, on desktop side-by-side */}
       <div className="flex flex-col lg:flex-row">

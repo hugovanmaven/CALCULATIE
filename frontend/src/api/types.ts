@@ -199,6 +199,23 @@ export interface StoredTitel {
   version?: number;
 }
 
+// ── Versiegeschiedenis ──
+
+export interface HistorieChange {
+  veld: string;
+  label: string;
+  oud: string | null;
+  nieuw: string | null;
+}
+
+export interface HistorieEntry {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  version: number | null;
+  changes: HistorieChange[];
+}
+
 export interface TitelListItem {
   id: string;
   titel: string;

@@ -1,6 +1,6 @@
 import type {
   CalculateRequest, CalculateResponse, SensitivityResponse, ValidateResponse,
-  StoredTitel, TitelListItem, OplageSimResponse, Titelgroep,
+  StoredTitel, TitelListItem, OplageSimResponse, Titelgroep, HistorieEntry,
 } from './types';
 
 const BASE = '/calculatie/api';
@@ -91,6 +91,14 @@ export async function saveTitel(data: {
 
 export async function deleteTitel(id: string): Promise<void> {
   return del(`/titels/${id}`);
+}
+
+export async function getHistorie(id: string): Promise<HistorieEntry[]> {
+  return get(`/titels/${id}/historie`);
+}
+
+export async function restoreHistorie(id: string, entryId: string): Promise<StoredTitel> {
+  return post(`/titels/${id}/historie/${entryId}/restore`, {});
 }
 
 export async function archiveTitel(id: string): Promise<void> {
