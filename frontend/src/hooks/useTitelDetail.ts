@@ -31,6 +31,11 @@ function migrateTitelInput(raw: any): TitelInput {
     }));
   }
 
+  // Drukken op druknummer sorteren: de opslagvolgorde normaliseert zo bij het
+  // laden (en wordt via de autosave teruggeschreven), zodat oudere titels die
+  // out-of-order zijn ingevoerd zichzelf herstellen.
+  ti.drukken = [...ti.drukken].sort((a, b) => (a.druknummer ?? 0) - (b.druknummer ?? 0));
+
   // Ensure voorschot fields exist
   if (ti.auteur_voorschot === undefined) ti.auteur_voorschot = 0;
   if (ti.agent_voorschot === undefined) ti.agent_voorschot = 0;

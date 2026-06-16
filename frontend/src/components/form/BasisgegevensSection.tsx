@@ -11,6 +11,13 @@ interface Props {
 export function BasisgegevensSection({ titelInput, updateField }: Props) {
   const drukken = titelInput.drukken ?? [{ druknummer: 1, oplage: 2000, drukkosten_per_ex: 1.20 }];
 
+  // Toon drukken altijd op druknummer (de engine rekent cumulatief in die
+  // volgorde). We bewaren de oorspronkelijke opslag-index zodat bewerken en
+  // verwijderen op de juiste druk werken, ongeacht de getoonde volgorde.
+  const drukkenGesorteerd = drukken
+    .map((druk, idx) => ({ druk, idx }))
+    .sort((a, b) => (a.druk.druknummer ?? 0) - (b.druk.druknummer ?? 0));
+
   const updateDruk = (idx: number, field: keyof DrukConfig, value: number) => {
     const next = drukken.map((d, i) => i === idx ? { ...d, [field]: value } : d);
     updateField('drukken', next);
@@ -139,11 +146,11 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
           Drukken
         </label>
         <div className="space-y-2">
-          {drukken.map((druk, idx) => (
+          {drukkenGesorteerd.map(({ druk, idx }, pos) => (
             <div
               key={idx}
               className={`flex items-center gap-2 p-2.5 rounded-lg border ${
-                idx === 0
+                pos === 0
                   ? 'bg-[var(--accent-light)] border-[var(--accent)]/20'
                   : 'bg-[var(--bg-primary)] border-[var(--border)]'
               }`}

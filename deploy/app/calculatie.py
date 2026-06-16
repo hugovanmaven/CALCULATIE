@@ -400,7 +400,12 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
     res = CalculatieResultaat(titel=t.titel)
     cumulatief = 0
 
-    for i, druk_cfg in enumerate(t.drukken):
+    # Drukken altijd op druknummer verwerken: de royalty-staffel loopt
+    # cumulatief, dus de volgorde bepaalt welke staffel-trede elke druk pakt.
+    # Zo klopt de per-druk uitsplitsing ongeacht de invoervolgorde.
+    drukken_gesorteerd = sorted(t.drukken, key=lambda d: d.druknummer)
+
+    for i, druk_cfg in enumerate(drukken_gesorteerd):
         oplage = druk_cfg.oplage
         kosten_totaal = sum(kp.bedrag for kp in druk_cfg.kostenposten)
         kosten_per_ex = kosten_totaal / oplage if oplage > 0 else 0.0

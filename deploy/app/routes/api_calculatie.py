@@ -11,7 +11,7 @@ from flask import Blueprint, request, jsonify, Response, abort
 
 from ..calculatie import (
     TitelInput, StaffelTrede, KostenPost, DrukConfig, ExtraDerde,
-    bereken_titel,
+    bereken_titel, bereken_gemiddeld_staffel_percentage,
     KanaalResultaat, DrukResultaat, CalculatieResultaat,
 )
 from .. import storage_calculatie as storage
@@ -687,7 +687,7 @@ def simulate_oplage():
     # Fixed costs: kostenposten van de 1e druk
     totaal_eenmalig = druk.get("kosten_totaal", 0)
 
-    drukken_config = ti.get("drukken", [])
+    drukken_config = sorted(ti.get("drukken", []), key=lambda x: x.get("druknummer", 1))
     if not drukken_config:
         drukken_config = [{"druknummer": 1, "oplage": 2000, "drukkosten_per_ex": 1.20}]
 
@@ -716,7 +716,9 @@ def simulate_oplage():
         + illustrator_voorschot + extra_derden_voorschot
     )
 
-    # Per-ex royalty/commission per partij (already deducted in netto_winst_maven)
+    # Per-ex royalty/commission per partij, gemeten op de 1e druk (laagste
+    # staffel-trede). Voor partijen MÉT een staffel trekken we dit niet plat
+    # door, maar laten we het meeklimmen met het volume (zie _royalty_op_volume).
     drukkosten_in_perex = ws["drukkosten"] * verd_ws + rt["drukkosten"] * verd_rt + b2b_k["drukkosten"] * verd_b2b
     pure_var_winst_per_ex = var_winst_per_ex + drukkosten_in_perex  # add back drukkosten
 
@@ -725,67 +727,74 @@ def simulate_oplage():
     vertaler_per_ex = ws["vertaler"] * verd_ws + rt["vertaler"] * verd_rt + b2b_k["vertaler"] * verd_b2b
     illustrator_per_ex = ws["illustrator"] * verd_ws + rt["illustrator"] * verd_rt + b2b_k["illustrator"] * verd_b2b
 
-    # Correct per-ex margin: add back the per-ex royalty/commission for each party
-    # that has a voorschot (those will be deducted as effective fixed costs instead).
-    # Parties WITHOUT a voorschot keep their per-ex cost as an ongoing variable cost.
-    adjusted_per_ex = pure_var_winst_per_ex
-    if auteur_voorschot > 0:
-        adjusted_per_ex += royalty_per_ex
-    if agent_voorschot > 0 and agent_per_ex > 0:
-        adjusted_per_ex += agent_per_ex
-    if vertaler_voorschot > 0 and vertaler_per_ex > 0:
-        adjusted_per_ex += vertaler_per_ex
-    if illustrator_voorschot > 0 and illustrator_per_ex > 0:
-        adjusted_per_ex += illustrator_per_ex
+    # Gewogen verkoopprijs ex btw over de kanalen: de basis waarop royalty-%'s
+    # worden toegepast. Hiermee herberekenen we de staffel-royalty bij élk
+    # volume i.p.v. het 1e-druk-tarief plat door te trekken.
+    prijs_ex_btw_blend = (
+        ws["verkoopprijs_ex_btw"] * verd_ws + rt["verkoopprijs_ex_btw"] * verd_rt + b2b_k["verkoopprijs_ex_btw"] * verd_b2b
+    )
+
+    # De vier royalty-stromen halen we uit de per-ex marge (basis_per_ex) en
+    # berekenen we per volume opnieuw — staffel-bewust. Zo klopt de royalty ook
+    # als de staffel bij hogere oplages oploopt. Winstdeling, fulfillment etc.
+    # blijven lineair in de per-ex marge.
+    basis_per_ex = pure_var_winst_per_ex + royalty_per_ex + agent_per_ex + vertaler_per_ex + illustrator_per_ex
+
+    _royalty_partijen = [
+        (ti.get("auteur_royalty_staffel"), royalty_per_ex, auteur_voorschot),
+        (ti.get("agent_staffel"), agent_per_ex, agent_voorschot),
+        (ti.get("vertaler_staffel"), vertaler_per_ex, vertaler_voorschot),
+        (ti.get("illustrator_staffel"), illustrator_per_ex, illustrator_voorschot),
+    ]
+
+    def _royalty_op_volume(staffel_dicts, flat_per_ex, vol):
+        """Totale royalty voor één partij bij `vol` verkochte exemplaren.
+
+        Mét staffel: gewogen staffel-% over 1..vol × gewogen verkoopprijs ex btw
+        (klimt mee). Zónder staffel: vast per-ex tarief × vol (lineair, ongewijzigd).
+        """
+        if staffel_dicts:
+            pct = bereken_gemiddeld_staffel_percentage(_staffel_list(staffel_dicts), 1, vol)
+            return prijs_ex_btw_blend * pct * vol
+        return flat_per_ex * vol
+
+    def _verdiende_voorschot_royalty(vol):
+        """Som van verdiende royalty's bij `vol`, alleen voor partijen mét voorschot."""
+        return sum(
+            _royalty_op_volume(staffel, per_ex, vol)
+            for staffel, per_ex, vs in _royalty_partijen if vs > 0
+        )
 
     def calc_result_at_volume(vol):
         """Calculate net result at a given total volume sold."""
         # Drukkosten: sum up per-druk, capped at the volume
         druk_costs = 0
         remaining = vol
-        for d in sorted(drukken_config, key=lambda x: x.get("druknummer", 1)):
+        for d in drukken_config:   # al gesorteerd op druknummer
             druk_vol = min(remaining, d.get("oplage", 0))
             druk_costs += druk_vol * d.get("drukkosten_per_ex", 0)
             remaining -= druk_vol
             if remaining <= 0:
                 break
         if remaining > 0 and drukken_config:
-            last_druk = drukken_config[-1]
+            last_druk = drukken_config[-1]   # hoogste druknummer
             druk_costs += remaining * last_druk.get("drukkosten_per_ex", 1.20)
 
-        # Effective cost per partij met voorschot:
-        #   If earned royalties < voorschot: Maven pays exactly the voorschot (advance not yet recouped).
-        #   If earned royalties > voorschot: Maven pays ongoing royalties (advance fully recouped).
-        # For parties WITHOUT voorschot: per-ex cost already in adjusted_per_ex (variable).
-        effective_fixed = totaal_eenmalig
+        # Royalty-kosten per partij (staffel-bewust). Mét voorschot: Maven betaalt
+        # minimaal het voorschot tot het is ingelopen, daarna de (hogere) verdiende
+        # royalty. Zónder voorschot: gewoon de verdiende royalty.
+        royalty_kosten = 0.0
+        for staffel, per_ex, vs in _royalty_partijen:
+            verdiend = _royalty_op_volume(staffel, per_ex, vol)
+            royalty_kosten += max(vs, verdiend) if vs > 0 else verdiend
 
-        if auteur_voorschot > 0:
-            auteur_earned = vol * royalty_per_ex
-            effective_fixed += max(auteur_voorschot, auteur_earned) if royalty_per_ex > 0 else auteur_voorschot
-        if agent_voorschot > 0:
-            agent_earned = vol * agent_per_ex
-            effective_fixed += max(agent_voorschot, agent_earned) if agent_per_ex > 0 else agent_voorschot
-        if vertaler_voorschot > 0:
-            vertaler_earned = vol * vertaler_per_ex
-            effective_fixed += max(vertaler_voorschot, vertaler_earned) if vertaler_per_ex > 0 else vertaler_voorschot
-        if illustrator_voorschot > 0:
-            illustrator_earned = vol * illustrator_per_ex
-            effective_fixed += max(illustrator_voorschot, illustrator_earned) if illustrator_per_ex > 0 else illustrator_voorschot
-        # extra_derden voorschotten: treat as pure fixed costs (no per-ex recoupment tracked)
-        effective_fixed += extra_derden_voorschot
-
-        net_result = vol * adjusted_per_ex - druk_costs - effective_fixed
+        effective_fixed = totaal_eenmalig + extra_derden_voorschot
+        net_result = vol * basis_per_ex - druk_costs - effective_fixed - royalty_kosten
 
         total_omzet = vol * netto_omzet_per_ex
         marge = net_result / total_omzet if total_omzet > 0 else -10
 
-        # voorschot_ingelopen: are all royalties/commissions >= their respective voorschotten?
-        totaal_earned = (
-            (vol * royalty_per_ex if auteur_voorschot > 0 else 0)
-            + (vol * agent_per_ex if agent_voorschot > 0 else 0)
-            + (vol * vertaler_per_ex if vertaler_voorschot > 0 else 0)
-            + (vol * illustrator_per_ex if illustrator_voorschot > 0 else 0)
-        )
+        totaal_earned = _verdiende_voorschot_royalty(vol)
         voorschot_ingelopen = totaal_earned >= totaal_voorschotten if totaal_voorschotten > 0 else True
 
         return {
@@ -818,24 +827,24 @@ def simulate_oplage():
                 break
         return max(((high + 24) // 50) * 50, 50)
 
-    # Voorschot earn-out: oplage waarop de royalty's het voorschot dekken
+    # Voorschot earn-out: oplage waarop de verdiende royalty's het voorschot
+    # dekken. Staffel-bewust, dus numeriek gezocht (de royalty klimt non-lineair).
     def find_earn_out():
-        total_recoup_per_ex = (
-            (royalty_per_ex if auteur_voorschot > 0 else 0)
-            + (agent_per_ex if agent_voorschot > 0 else 0)
-            + (vertaler_per_ex if vertaler_voorschot > 0 else 0)
-            + (illustrator_per_ex if illustrator_voorschot > 0 else 0)
-        )
-        active_vs = (
-            (auteur_voorschot if auteur_voorschot > 0 else 0)
-            + (agent_voorschot if agent_voorschot > 0 else 0)
-            + (vertaler_voorschot if vertaler_voorschot > 0 else 0)
-            + (illustrator_voorschot if illustrator_voorschot > 0 else 0)
-        )
-        if active_vs <= 0 or total_recoup_per_ex <= 0:
+        active_vs = sum(vs for _, _, vs in _royalty_partijen if vs > 0)
+        if active_vs <= 0:
             return None
-        eo = int(active_vs / total_recoup_per_ex) + 1
-        return ((eo + 49) // 50) * 50
+        if _verdiende_voorschot_royalty(200000) < active_vs:
+            return None  # binnen redelijke oplage niet ingelopen
+        lo, hi = 1, 200000
+        for _ in range(50):
+            mid = (lo + hi) // 2
+            if _verdiende_voorschot_royalty(mid) < active_vs:
+                lo = mid
+            else:
+                hi = mid
+            if hi - lo <= 10:
+                break
+        return ((hi + 49) // 50) * 50
 
     break_even = find_break_even()
     voorschot_earn_out = find_earn_out()
@@ -975,7 +984,10 @@ def export_excel():
     h2(ws_sheet[f"A{r}"], "BASISGEGEVENS")
     r += 1
 
-    drukken_cfg = ti.get("drukken", [{"druknummer": 1, "oplage": 2000, "drukkosten_per_ex": 1.20}])
+    drukken_cfg = sorted(
+        ti.get("drukken", [{"druknummer": 1, "oplage": 2000, "drukkosten_per_ex": 1.20}]),
+        key=lambda x: x.get("druknummer", 1),
+    )
     vkp_incl = ti.get("verkoopprijs_incl_btw", 0)
     btw_pct_v = ti.get("btw_percentage", 0.09)
     bh_korting = ti.get("boekhandelskorting", 0.48)
@@ -1730,7 +1742,7 @@ def export_pdf():
         abort(400, description=f"Berekening mislukt: {e}")
 
     druk0 = calc["drukken"][0] if calc.get("drukken") else {}
-    drukken_cfg = ti.get("drukken", [])
+    drukken_cfg = sorted(ti.get("drukken", []), key=lambda x: x.get("druknummer", 1))
     totaal_oplage = sum(d.get("oplage", 0) for d in drukken_cfg)
 
     # ── Kleuren (gelijk aan Excel-export) ──
