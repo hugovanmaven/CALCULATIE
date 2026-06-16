@@ -43,6 +43,13 @@ MAX_BACKUPS = 30
 # het ook klopt over meerdere gunicorn-workers heen).
 BACKUP_THROTTLE_SECONDS = 300
 
+# Versiegeschiedenis: opeenvolgende bewerkingen binnen dit venster bundelen we
+# tot één tijdlijn-moment (we werken dezelfde rij bij i.p.v. een nieuwe te maken),
+# zodat autosave-tikjes geen ruis worden. En we bewaren hooguit zoveel momenten
+# per titel.
+HISTORIE_BUNDLE_SECONDS = 600   # 10 minuten
+MAX_HISTORIE = 100
+
 
 class ConcurrentEditError(Exception):
     """Geheven als een save botst met een nieuwere versie in de DB.
@@ -193,6 +200,10 @@ def save_titel(titel_id: str, titel_data: dict, expected_version: int | None = N
             db.session.rollback()
             raise ConcurrentEditError(current)
 
+    # Inhoud vóór de wijziging vastleggen, zodat we ná de commit kunnen bepalen
+    # of er écht iets is veranderd (en alleen dán geschiedenis schrijven).
+    before_sig = None if is_new else _content_sig(titel_to_dict(t))
+
     _backup_current_to_json()
 
     if is_new:
@@ -208,7 +219,12 @@ def save_titel(titel_id: str, titel_data: dict, expected_version: int | None = N
         db.session.rollback()
         fresh = db.session.get(Titel, titel_id)
         raise ConcurrentEditError(int(fresh.version) if fresh else (expected_version or 1))
-    return titel_to_dict(t)
+
+    result = titel_to_dict(t)
+    # Geschiedenis alleen bij een echte inhoudswijziging (geen no-op autosave).
+    if is_new or before_sig != _content_sig(result):
+        _record_historie(titel_id, result)
+    return result
 
 
 def set_archived(titel_id: str, archived: bool) -> dict | None:
@@ -236,11 +252,12 @@ def set_archived(titel_id: str, archived: bool) -> dict | None:
 
 
 def delete_titel(titel_id: str) -> bool:
-    from .db import db, Titel
+    from .db import db, Titel, TitelHistorie
     _backup_current_to_json(force=True)
     t = db.session.get(Titel, titel_id)
     if t is None:
         return False
+    db.session.query(TitelHistorie).filter_by(titel_id=titel_id).delete()
     db.session.delete(t)
     db.session.commit()
     return True
@@ -248,6 +265,224 @@ def delete_titel(titel_id: str) -> bool:
 
 def new_id() -> str:
     return str(uuid.uuid4())[:8]
+
+
+# ──────────────────────────────────────────────────────────────────────
+#  VERSIEGESCHIEDENIS
+# ──────────────────────────────────────────────────────────────────────
+
+# Velden waarvan we wijzigingen tonen in de tijdlijn, met label + opmaak.
+# Opmaak: "euro" → € met 2 decimalen, "pct" → percentage (waarde ×100),
+# "tekst"/"bool" → letterlijk. Geneste lijsten (drukken, kostenposten,
+# staffels) tonen we generiek als "… gewijzigd".
+_HISTORIE_VELDEN: list[tuple[str, str, str]] = [
+    ("titel", "Titel", "tekst"),
+    ("auteur", "Auteur", "tekst"),
+    ("isbn", "ISBN", "tekst"),
+    ("verschijningsdatum", "Verschijningsdatum", "tekst"),
+    ("verschenen", "Verschenen", "bool"),
+    ("verkoopprijs_incl_btw", "Verkoopprijs incl. btw", "euro"),
+    ("btw_percentage", "Btw", "pct"),
+    ("boekhandelskorting", "Boekhandelskorting", "pct"),
+    ("transactiekosten_pct", "Transactiekosten", "pct"),
+    ("fulfillment_per_ex", "Fulfillment per ex.", "euro"),
+    ("cac_per_ex", "CAC per ex.", "euro"),
+    ("distributie_cb_per_ex", "Distributie CB per ex.", "euro"),
+    ("b2b_porto_per_ex", "B2B porto per ex.", "euro"),
+    ("b2b_korting_pct", "B2B-korting", "pct"),
+    ("auteur_winstdeling_pct", "Auteur winstdeling", "pct"),
+    ("auteur_voorschot", "Auteur voorschot", "euro"),
+    ("agent_pct", "Agent royalty", "pct"),
+    ("agent_winstdeling_pct", "Agent winstdeling", "pct"),
+    ("agent_voorschot", "Agent voorschot", "euro"),
+    ("vertaler_pct", "Vertaler royalty", "pct"),
+    ("vertaler_winstdeling_pct", "Vertaler winstdeling", "pct"),
+    ("vertaler_voorschot", "Vertaler voorschot", "euro"),
+    ("illustrator_pct", "Illustrator royalty", "pct"),
+    ("illustrator_winstdeling_pct", "Illustrator winstdeling", "pct"),
+    ("illustrator_voorschot", "Illustrator voorschot", "euro"),
+    ("heeft_partner", "Partner", "bool"),
+    ("partner_naam", "Partnernaam", "tekst"),
+    ("partner_winstdeling_pct", "Partner winstdeling", "pct"),
+    ("overige_kosten_pct", "Overige kosten", "pct"),
+]
+
+# Geneste lijst-velden in titel_input: alleen "gewijzigd" melden.
+_HISTORIE_LIJSTEN: list[tuple[str, str]] = [
+    ("drukken", "Drukken"),
+    ("auteur_royalty_staffel", "Auteur-staffel"),
+    ("agent_staffel", "Agent-staffel"),
+    ("vertaler_staffel", "Vertaler-staffel"),
+    ("illustrator_staffel", "Illustrator-staffel"),
+    ("extra_derden", "Extra derden"),
+    ("overige_kosten_items", "Overige-kostenposten"),
+]
+
+_HISTORIE_VERDELING = [
+    ("verdeling_webshop", "Verdeling webshop", "pct"),
+    ("verdeling_retail", "Verdeling retail/CB", "pct"),
+    ("verdeling_b2b", "Verdeling B2B", "pct"),
+]
+
+
+def _content_sig(d: dict):
+    """Vergelijkbare inhoud van een titel-dict, zónder version/archived.
+
+    Twee titels met dezelfde inhoud geven dezelfde signature, zodat een
+    no-op autosave (alleen versie-ophoging) geen geschiedenis oplevert.
+    """
+    return {
+        "titel_input": d.get("titel_input", {}),
+        "verdeling_webshop": d.get("verdeling_webshop"),
+        "verdeling_retail": d.get("verdeling_retail"),
+        "verdeling_b2b": d.get("verdeling_b2b"),
+        "titelgroep_id": d.get("titelgroep_id"),
+    }
+
+
+def _fmt(value, soort: str) -> str:
+    if value is None or value == "":
+        return "—"
+    if soort == "euro":
+        try:
+            return f"€ {float(value):.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    if soort == "pct":
+        try:
+            return f"{float(value) * 100:.1f}%"
+        except (TypeError, ValueError):
+            return str(value)
+    if soort == "bool":
+        return "ja" if value else "nee"
+    return str(value)
+
+
+def _diff_snapshots(old: dict | None, new: dict) -> list[dict]:
+    """Veldwijzigingen tussen twee titel-snapshots (oud → nieuw).
+
+    Retourneert een lijst {veld, label, oud, nieuw} met geformatteerde waarden.
+    Geneste lijsten melden we generiek. ``old=None`` betekent: nieuwe titel.
+    """
+    if old is None:
+        return [{"veld": "_aangemaakt", "label": "Titel aangemaakt", "oud": None, "nieuw": None}]
+
+    old_ti = old.get("titel_input", {}) or {}
+    new_ti = new.get("titel_input", {}) or {}
+    changes: list[dict] = []
+
+    for veld, label, soort in _HISTORIE_VELDEN:
+        ov, nv = old_ti.get(veld), new_ti.get(veld)
+        if ov != nv:
+            changes.append({"veld": veld, "label": label, "oud": _fmt(ov, soort), "nieuw": _fmt(nv, soort)})
+
+    for veld, label, soort in _HISTORIE_VERDELING:
+        ov, nv = old.get(veld), new.get(veld)
+        if ov != nv:
+            changes.append({"veld": veld, "label": label, "oud": _fmt(ov, soort), "nieuw": _fmt(nv, soort)})
+
+    for veld, label in _HISTORIE_LIJSTEN:
+        if (old_ti.get(veld) or []) != (new_ti.get(veld) or []):
+            changes.append({"veld": veld, "label": label, "oud": None, "nieuw": "gewijzigd"})
+
+    if (old.get("titelgroep_id")) != (new.get("titelgroep_id")):
+        changes.append({"veld": "titelgroep_id", "label": "Titelgroep", "oud": None, "nieuw": "gewijzigd"})
+
+    return changes
+
+
+def _record_historie(titel_id: str, snapshot: dict):
+    """Leg een snapshot vast; bundel binnen HISTORIE_BUNDLE_SECONDS tot één moment."""
+    from .db import db, TitelHistorie
+    try:
+        now = datetime.utcnow()
+        latest = (
+            db.session.query(TitelHistorie)
+            .filter_by(titel_id=titel_id)
+            .order_by(TitelHistorie.created_at.desc())
+            .first()
+        )
+        if latest is not None and (now - (latest.updated_at or latest.created_at)).total_seconds() < HISTORIE_BUNDLE_SECONDS:
+            # Zelfde bewerksessie: werk de bestaande rij bij.
+            latest.snapshot = snapshot
+            latest.version = snapshot.get("version")
+            latest.updated_at = now
+        else:
+            db.session.add(TitelHistorie(
+                id=str(uuid.uuid4()),
+                titel_id=titel_id,
+                created_at=now,
+                updated_at=now,
+                version=snapshot.get("version"),
+                snapshot=snapshot,
+            ))
+
+        # Snoei: hooguit MAX_HISTORIE momenten per titel.
+        overtollig = (
+            db.session.query(TitelHistorie)
+            .filter_by(titel_id=titel_id)
+            .order_by(TitelHistorie.created_at.desc())
+            .offset(MAX_HISTORIE)
+            .all()
+        )
+        for row in overtollig:
+            db.session.delete(row)
+
+        db.session.commit()
+    except Exception as exc:
+        # Geschiedenis mag een save nooit stukmaken.
+        db.session.rollback()
+        print(f"[storage] WARNING: geschiedenis vastleggen mislukt: {exc}")
+
+
+def list_historie(titel_id: str) -> list[dict]:
+    """Tijdlijn (nieuwste eerst) met per moment de veldwijzigingen t.o.v. het vorige."""
+    from .db import db, TitelHistorie
+    rows = (
+        db.session.query(TitelHistorie)
+        .filter_by(titel_id=titel_id)
+        .order_by(TitelHistorie.created_at.asc())
+        .all()
+    )
+    out = []
+    prev_snapshot = None
+    for r in rows:
+        out.append({
+            "id": r.id,
+            "created_at": (r.created_at or datetime.utcnow()).isoformat(),
+            "updated_at": (r.updated_at or r.created_at or datetime.utcnow()).isoformat(),
+            "version": r.version,
+            "changes": _diff_snapshots(prev_snapshot, r.snapshot or {}),
+        })
+        prev_snapshot = r.snapshot or {}
+    out.reverse()  # nieuwste eerst
+    return out
+
+
+def restore_historie(titel_id: str, entry_id: str) -> dict | None:
+    """Zet de titel terug naar de snapshot van een geschiedenis-moment.
+
+    Loopt via save_titel, dus het telt netjes mee in de versie-logica en levert
+    zelf weer een geschiedenis-moment op. Retourneert de nieuwe titel-dict, of
+    None als titel/entry niet bestaat.
+    """
+    from .db import db, Titel, TitelHistorie
+    entry = db.session.get(TitelHistorie, entry_id)
+    if entry is None or entry.titel_id != titel_id:
+        return None
+    t = db.session.get(Titel, titel_id)
+    if t is None:
+        return None
+    current_version = int(t.version or 1)
+    snap = entry.snapshot or {}
+    restore_data = {
+        "titel_input": snap.get("titel_input", {}),
+        "verdeling_webshop": snap.get("verdeling_webshop", 0.10),
+        "verdeling_retail": snap.get("verdeling_retail", 0.85),
+        "verdeling_b2b": snap.get("verdeling_b2b", 0.05),
+        "titelgroep_id": snap.get("titelgroep_id"),
+    }
+    return save_titel(titel_id, restore_data, expected_version=current_version)
 
 
 # ──────────────────────────────────────────────────────────────────────

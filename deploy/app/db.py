@@ -125,3 +125,22 @@ class Titel(db.Model):
     illustrator_staffel = Column(JSON, default=list)
     extra_derden = Column(JSON, default=list)
     overige_kosten_items = Column(JSON, default=list)
+
+
+class TitelHistorie(db.Model):
+    """Versiegeschiedenis per titel: één snapshot per bewerksessie.
+
+    We bewaren een volledige snapshot (titel-dict) plus het tijdstip en het
+    versienummer van dat moment. Opeenvolgende bewerkingen binnen één sessie
+    (zie HISTORIE_BUNDLE_SECONDS) werken dezelfde rij bij i.p.v. een nieuwe te
+    maken — zo blijft de tijdlijn leesbaar zonder autosave-ruis.
+    """
+
+    __tablename__ = "titel_historie"
+
+    id = Column(String(36), primary_key=True)
+    titel_id = Column(String(36), index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    version = Column(Integer)          # titel-versie op het moment van deze snapshot
+    snapshot = Column(JSON)            # volledige titel-dict (titel_input + verdeling + titelgroep_id)
