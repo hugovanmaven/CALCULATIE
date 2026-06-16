@@ -728,3 +728,79 @@ class TestEdgeCases:
         t = _titel(drukken=[])
         res = bereken_titel(t)
         assert res.drukken == []
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  L. DRUK-VOLGORDE + STAFFEL-BEWUSTE SIMULATIE
+# ─────────────────────────────────────────────────────────────────────
+
+class TestDrukVolgorde:
+    """Drukken worden altijd op druknummer verwerkt, ongeacht invoervolgorde."""
+
+    def _titel(self, drukken):
+        s = [StaffelTrede(5_000, 0.10), StaffelTrede(999_999, 0.15)]
+        return TitelInput(
+            titel="Volgorde", verkoopprijs_incl_btw=24.99, btw_percentage=0.09,
+            boekhandelskorting=0.48, auteur_royalty_staffel=s, drukken=drukken,
+        )
+
+    def test_per_druk_royalty_onafhankelijk_van_invoervolgorde(self):
+        d1 = DrukConfig(druknummer=1, oplage=4_000, drukkosten_per_ex=1.20)
+        d4 = DrukConfig(druknummer=4, oplage=4_000, drukkosten_per_ex=1.20)
+        oplopend = bereken_titel(self._titel([d1, d4]))
+        omgekeerd = bereken_titel(self._titel([d4, d1]))
+        # Ongeacht invoervolgorde: 1e druk eerst, 4e druk daarna
+        for res in (oplopend, omgekeerd):
+            assert res.drukken[0].druk_type == "1e druk"
+            assert res.drukken[1].druk_type == "4e druk"
+        # Per-druk royalty identiek ongeacht invoervolgorde
+        assert oplopend.drukken[0].retail.auteur_royalty == pytest.approx(
+            omgekeerd.drukken[0].retail.auteur_royalty, abs=TOL)
+        assert oplopend.drukken[1].retail.auteur_royalty == pytest.approx(
+            omgekeerd.drukken[1].retail.auteur_royalty, abs=TOL)
+        # Latere druk zit hoger in de staffel (cumulatief over de 5000-grens)
+        assert oplopend.drukken[1].retail.auteur_royalty > oplopend.drukken[0].retail.auteur_royalty
+
+
+class TestSimulatieStaffel:
+    """De oplage-simulatie volgt de royalty-staffel i.p.v. een plat tarief."""
+
+    def _client(self):
+        import tempfile
+        from pathlib import Path
+        import app.storage_calculatie as storage
+        tmp = Path(tempfile.mkdtemp())
+        storage.DATA_DIR = tmp
+        storage.TITELS_FILE = tmp / "x.json"
+        storage.BACKUP_DIR = tmp / "b"
+        os.environ["DATABASE_URL"] = ""
+        from app import create_app
+        return create_app().test_client()
+
+    def _sim_netto(self, client, met_staffel, vol):
+        staffel = [{"tot_exemplaren": 5_000, "percentage": 0.10},
+                   {"tot_exemplaren": 10_000, "percentage": 0.125},
+                   {"tot_exemplaren": 999_999, "percentage": 0.15}]
+        ti = {
+            "titel": "Sim", "verkoopprijs_incl_btw": 24.99, "btw_percentage": 0.09,
+            "boekhandelskorting": 0.48,
+            "auteur_royalty_staffel": staffel if met_staffel else [],
+            "drukken": [{"druknummer": 1, "oplage": vol, "drukkosten_per_ex": 0, "kostenposten": []}],
+        }
+        body = {"titel_input": ti, "verdeling_webshop": 0.10,
+                "verdeling_retail": 0.85, "verdeling_b2b": 0.05}
+        rows = client.post("/calculatie/api/simulate/oplage", json=body).get_json()["rows"]
+        return next(r["netto_resultaat"] for r in rows if r["oplage"] == vol)
+
+    def test_simulatie_royalty_volgt_staffel_bij_hoge_oplage(self):
+        client = self._client()
+        vol = 18_000
+        # Verschil mét/zónder staffel = de totale auteursroyalty die de sim aftrekt
+        roy_sim = self._sim_netto(client, False, vol) - self._sim_netto(client, True, vol)
+        vkp_ex = 24.99 / 1.09
+        staffel = [StaffelTrede(5_000, 0.10), StaffelTrede(10_000, 0.125), StaffelTrede(999_999, 0.15)]
+        roy_correct = vkp_ex * bereken_gemiddeld_staffel_percentage(staffel, 1, vol) * vol
+        roy_flat = vkp_ex * 0.10 * vol
+        # Volgt de staffel (~€53,3k), niet het platte 1e-druk-tarief (~€41,3k)
+        assert roy_sim == pytest.approx(roy_correct, abs=2.0)
+        assert roy_sim > roy_flat + 5_000
