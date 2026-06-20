@@ -9,7 +9,22 @@ export interface Stroom {
   begroot: number;
   geboekt: number;
   gebruikt: number;
+  verschil: number;
   overschrijding: boolean;
+  status: string;            // geboekt|overschrijding|verwacht_nog|niet_gemaakt|verkeerd_geboekt|onverklaard|leeg
+  verklaring_status: string;
+  notitie: string;
+}
+
+export interface Accuratesse {
+  posten: number;
+  geboekt: number;
+  overschrijding: number;
+  verwacht_nog: number;
+  niet_gemaakt: number;
+  verkeerd_geboekt: number;
+  onverklaard: number;
+  te_verklaren: number;
 }
 
 export interface KanaalAgg {
@@ -41,6 +56,8 @@ export interface TitelResultaat {
   streef_pct: number;
   ondergrens_pct: number;
   status: 'groen' | 'oranje' | 'rood';
+  afgesloten: boolean;
+  accuratesse: Accuratesse;
 }
 
 export interface MavenTotaal {
@@ -56,6 +73,8 @@ export interface MavenTotaal {
   ondergrens_pct: number;
   status: 'groen' | 'oranje' | 'rood';
   aantal_titels: number;
+  te_verklaren: number;
+  afgesloten: boolean;
 }
 
 export interface Overzicht {
@@ -104,6 +123,33 @@ export async function importExact(file: File): Promise<{ rijen: number; nieuw: n
 
 export const getKosten = (isbn: string, periode: string) =>
   get<{ isbn: string; regels: GeboekteRegel[] }>(`/kosten/${isbn}?periode=${encodeURIComponent(periode)}`).then(r => r.regels);
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Resultaten API ${res.status}`);
+  return res.json();
+}
+
+export const setVerklaring = (recept_id: string, periode: string, stroom: string, status: string, notitie: string) =>
+  post('/verklaring', { recept_id, periode, stroom, status, notitie });
+
+export const afsluiten = (periode: string, afgesloten: boolean) =>
+  post('/afsluiten', { periode, afgesloten });
+
+// Status van een stroom (calculatie-check) → label + chip-kleur.
+export const STROOM_STATUS: Record<string, { label: string; cls: string }> = {
+  geboekt: { label: 'geboekt', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },
+  overschrijding: { label: 'boven begroting', cls: 'bg-red-50 text-red-700 ring-red-600/20' },
+  verwacht_nog: { label: 'verwacht nog', cls: 'bg-gray-100 text-gray-600 ring-gray-500/20' },
+  niet_gemaakt: { label: 'niet gemaakt', cls: 'bg-amber-50 text-amber-700 ring-amber-600/20' },
+  verkeerd_geboekt: { label: 'elders geboekt', cls: 'bg-sky-50 text-sky-700 ring-sky-600/20' },
+  onverklaard: { label: 'te verklaren', cls: 'bg-amber-100 text-amber-800 ring-amber-600/30' },
+  leeg: { label: '', cls: '' },
+};
 
 export const getPeriodes = () => get<{ periodes: string[] }>('/periodes').then(r => r.periodes);
 export const getOverzicht = (periode: string) => get<Overzicht>(`/overzicht?periode=${encodeURIComponent(periode)}`);

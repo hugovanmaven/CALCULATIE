@@ -40,6 +40,10 @@ export default function ResultatenView() {
       .catch(() => setError('Kon titel niet laden.'));
   };
 
+  const refreshDetail = () => {
+    if (detail) getTitel(detail.recept_id, periode).then(setDetail).catch(() => {});
+  };
+
   return (
     <div className="px-3 sm:px-4 py-4 max-w-screen-xl mx-auto">
       <div className="flex items-center justify-between mb-4">
@@ -65,7 +69,7 @@ export default function ResultatenView() {
       {loading && !overzicht ? (
         <div className="text-sm text-[var(--text-tertiary)] py-12 text-center">Laden…</div>
       ) : detail ? (
-        <TitelDetail data={detail} onBack={() => setDetail(null)} />
+        <TitelDetail data={detail} onBack={() => setDetail(null)} onRefresh={refreshDetail} />
       ) : overzicht ? (
         <div className="space-y-4">
           <OverzichtTable data={overzicht} onOpen={openDetail} />

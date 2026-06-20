@@ -19,7 +19,14 @@ export default function OverzichtTable({
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4 sm:p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-[var(--text-primary)]">Maven als geheel</h2>
-          <span className="text-xs text-[var(--text-tertiary)]">{m.aantal_titels} titels · {data.periode}</span>
+          <div className="flex items-center gap-2">
+            {m.te_verklaren > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset bg-amber-100 text-amber-800 ring-amber-600/30">
+                {m.te_verklaren} te verklaren
+              </span>
+            )}
+            <span className="text-xs text-[var(--text-tertiary)]">{m.aantal_titels} titels · {data.periode}</span>
+          </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Kpi label="Netto omzet" value={euro(m.netto_omzet)} />
