@@ -1,0 +1,7 @@
+periode,isbn,titel,stroom,categorie,grootboek,bedrag,omschrijving
+2026-Q2,9789493434271,Co-intelligentie (2026-editie),kosten_per_ex,productie,7000 Drukwerk,9396.00,Drukkosten realisatie Q2
+2026-Q2,9789493434271,Co-intelligentie (2026-editie),kosten_per_ex,campagne,4200 Online marketing,11000.00,Meta/Google campagne Q2
+2026-Q2,9789493434271,Co-intelligentie (2026-editie),vast,fulfillment,4300 Fulfillment B-Logic,8577.00,Webshop-fulfillment Q2
+2026-Q2,9789493434271,Co-intelligentie (2026-editie),vast,cb-distributie,4310 CB distributie,6516.00,CB-distributie Q2
+2026-Q2,9789493434271,Co-intelligentie (2026-editie),royalty,auteur,4100 Auteursroyalty,0.00,"Bij winstdeling-deal: leeg laten, app rekent uit recept"
+2026-Q2,,,vast,kantoor,4500 Kantoorkosten,12500.00,Algemene overhead zonder titel (isbn leeg) - alleen in Maven-totaal

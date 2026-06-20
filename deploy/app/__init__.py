@@ -37,6 +37,13 @@ def create_app():
     from .db import db
     db.init_app(app)
 
+    # Resultaten-module (geïsoleerd, achter feature flag) — modellen importeren
+    # zodat create_all() de res_-tabellen aanmaakt. Met de flag uit raakt de
+    # module de app niet aan. Verwijderen = dit blok weg.
+    from .resultaten import is_enabled as _resultaten_enabled
+    if _resultaten_enabled():
+        from .resultaten import models as _resultaten_models  # noqa: F401
+
     with app.app_context():
         db.create_all()
         from . import storage_calculatie as storage
