@@ -11,8 +11,10 @@ import tempfile
 
 from flask import Blueprint, jsonify, request
 
+from datetime import datetime
+
 from . import bereken, sales_sync
-from .models import KostenGeboekt, Mapping
+from .models import KostenGeboekt, Mapping, Verklaring, KwartaalStatus
 from .exact_import import import_exact
 from .storage_posten import calculatie_posten_voor
 from ..db import db
@@ -112,6 +114,58 @@ def reconcile_route():
         return jsonify(out)
     reconcile_titel(isbn, posten)
     return jsonify({"dry_run": False, "ok": True})
+
+
+# ── Calculatie-check: verklaringen + kwartaal afsluiten ────────────────────
+
+@bp.post("/verklaring")
+def verklaring_zetten():
+    """Verklaar een verschil begroot↔geboekt per (periode, titel, stroom).
+
+    Body: ``{recept_id, periode, stroom, status, notitie}``. ``status`` leeg →
+    verklaring verwijderen (terug naar auto-classificatie).
+    """
+    b = request.get_json(silent=True) or {}
+    recept_id, periode, stroom = b.get("recept_id"), b.get("periode"), b.get("stroom")
+    if not (recept_id and periode and stroom):
+        return jsonify({"error": "recept_id, periode en stroom vereist"}), 400
+    v = Verklaring.query.filter_by(
+        periode=periode, calculatie_titel_id=recept_id, stroom=stroom).first()
+    status = (b.get("status") or "").strip()
+    if not status:                                  # verklaring intrekken
+        if v:
+            db.session.delete(v)
+            db.session.commit()
+        return jsonify({"ok": True, "status": ""})
+    if v is None:
+        v = Verklaring(periode=periode, calculatie_titel_id=recept_id, stroom=stroom)
+        db.session.add(v)
+    v.status = status
+    v.notitie = (b.get("notitie") or "").strip()
+    v.door = "Hugo"
+    db.session.commit()
+    return jsonify({"ok": True, "status": v.status, "notitie": v.notitie})
+
+
+@bp.post("/afsluiten")
+def afsluiten():
+    """Sluit een kwartaal af of heropen het. Body: ``{periode, afgesloten}``.
+
+    Afgesloten → de app vraagt elk resterend gat te verklaren ('onverklaard').
+    """
+    b = request.get_json(silent=True) or {}
+    periode = b.get("periode")
+    if not periode:
+        return jsonify({"error": "periode vereist"}), 400
+    s = KwartaalStatus.query.filter_by(periode=periode).first()
+    if s is None:
+        s = KwartaalStatus(periode=periode)
+        db.session.add(s)
+    s.afgesloten = bool(b.get("afgesloten", True))
+    s.afgesloten_at = datetime.utcnow()
+    s.door = "Hugo"
+    db.session.commit()
+    return jsonify({"ok": True, "periode": periode, "afgesloten": s.afgesloten})
 
 
 @bp.get("/mapping")

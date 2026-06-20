@@ -188,3 +188,54 @@ class Historie(db.Model):
     __table_args__ = (
         UniqueConstraint("isbn", "cutover_datum", name="uq_res_historie"),
     )
+
+
+class Verklaring(db.Model):
+    """Verklaring van een gat tussen begroot en geboekt — de 'calculatie-check'.
+
+    Per (periode, titel, stroom) leggen we vast hoe een verschil verklaard is:
+    de kosten komen nog (verwacht_nog), zijn niet gemaakt (niet_gemaakt, met
+    notitie waarom), of stonden verkeerd geboekt en zijn herkoppeld
+    (verkeerd_geboekt). Geen verklaring + afgesloten kwartaal = 'onverklaard'
+    → de app herinnert eraan. Dit is een audittrail: we moeten elk verschil
+    kunnen verklaren, niet de calculatie automatisch bijstellen.
+    """
+
+    __tablename__ = "res_verklaring"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    periode = Column(String(10), index=True)             # "2026-Q2"
+    calculatie_titel_id = Column(String(36), index=True) # → Titel.id (recept)
+    stroom = Column(String(30))                          # productie | vast | campagne | royalty | overig
+
+    status = Column(String(20), default="")             # verwacht_nog | niet_gemaakt | verkeerd_geboekt | akkoord
+    notitie = Column(Text, default="")
+
+    bijgewerkt_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    door = Column(Text, default="")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "periode", "calculatie_titel_id", "stroom",
+            name="uq_res_verklaring",
+        ),
+    )
+
+
+class KwartaalStatus(db.Model):
+    """Markeert of een kwartaal is 'afgesloten' (de balans opgemaakt).
+
+    Vóór afsluiten telt een ongeboekt-begroot als 'verwacht nog' (timing); ná
+    afsluiten vraagt de app om elk resterend gat te verklaren. Losse tabel naast
+    de bevroren ``res_kwartaal_afsluiting`` (die de berekende staat snapshot);
+    dit is enkel de open/dicht-vlag per periode.
+    """
+
+    __tablename__ = "res_kwartaal_status"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    periode = Column(String(10), unique=True, index=True)   # "2026-Q2"
+    afgesloten = Column(Boolean, default=False)
+    afgesloten_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    door = Column(Text, default="")

@@ -23,7 +23,7 @@ Model (vastgesteld met Hugo):
 
 from ..calculatie import TitelInput, StaffelTrede, bereken_gemiddeld_staffel_percentage
 from ..storage_calculatie import get_titel, load_all
-from .models import KostenGeboekt, Historie
+from .models import KostenGeboekt, Historie, Verklaring, KwartaalStatus
 from . import sales_sync
 
 STREEF_PCT = 0.35
@@ -180,7 +180,12 @@ def bereken_titel(recept_id: str, periode: str | None = "2026") -> dict | None:
     }
     geboekt = _geboekt_per_stroom(t.isbn, periode)
 
-    # ── max(begroot, geboekt) per stroom ──
+    # ── Verklaarlaag (calculatie-check): periode-status + bestaande verklaringen ──
+    afgesloten = _periode_afgesloten(periode)
+    verklaringen = {v.stroom: v for v in Verklaring.query.filter_by(
+        periode=periode, calculatie_titel_id=recept_id).all()}
+
+    # ── max(begroot, geboekt) per stroom + classificatie van het verschil ──
     stromen = []
     kosten_totaal = 0.0
     for key, label in STROOM_LABELS.items():
@@ -188,11 +193,19 @@ def bereken_titel(recept_id: str, periode: str | None = "2026") -> dict | None:
         g = geboekt.get(key, 0.0)
         gebruikt = max(b, g)
         kosten_totaal += gebruikt
+        v = verklaringen.get(key)
+        st = _classificeer_stroom(b, g, v, afgesloten)
         stromen.append({
             "key": key, "label": label,
             "begroot": round(b, 2), "geboekt": round(g, 2), "gebruikt": round(gebruikt, 2),
+            "verschil": round(b - g, 2),
             "overschrijding": g > b + 0.005,
+            "status": st,
+            "verklaring_status": v.status if v else "",
+            "notitie": v.notitie if v else "",
         })
+
+    accuratesse = _accuratesse(stromen)
 
     brutowinst = round(netto_omzet - kosten_totaal, 2)
     marge_pct = round(brutowinst / netto_omzet, 4) if netto_omzet else 0.0
@@ -231,6 +244,46 @@ def bereken_titel(recept_id: str, periode: str | None = "2026") -> dict | None:
         "streef_pct": STREEF_PCT,
         "ondergrens_pct": ONDERGRENS_PCT,
         "status": _status(marge_pct),
+        "afgesloten": afgesloten,
+        "accuratesse": accuratesse,
+    }
+
+
+def _periode_afgesloten(periode: str | None) -> bool:
+    if not periode:
+        return False
+    s = KwartaalStatus.query.filter_by(periode=periode).first()
+    return bool(s and s.afgesloten)
+
+
+def _classificeer_stroom(b: float, g: float, verklaring, afgesloten: bool) -> str:
+    """Status van het verschil begroot↔geboekt (de calculatie-check)."""
+    if b <= 0.005 and g <= 0.005:
+        return "leeg"                       # geen post
+    if g > b + 0.5:
+        return "overschrijding"             # calc was te laag
+    if g >= b - 0.5:
+        return "geboekt"                    # geboekt ≈ begroot → klopt
+    # gap: begroot > geboekt
+    if verklaring and verklaring.status:
+        return verklaring.status            # verwacht_nog | niet_gemaakt | verkeerd_geboekt | akkoord
+    return "verwacht_nog" if not afgesloten else "onverklaard"
+
+
+def _accuratesse(stromen: list[dict]) -> dict:
+    """Samenvatting 'hoe goed was de calculatie' over de posten met inhoud."""
+    from collections import Counter
+    rel = [s for s in stromen if s["status"] != "leeg"]
+    c = Counter(s["status"] for s in rel)
+    return {
+        "posten": len(rel),
+        "geboekt": c.get("geboekt", 0),
+        "overschrijding": c.get("overschrijding", 0),
+        "verwacht_nog": c.get("verwacht_nog", 0),
+        "niet_gemaakt": c.get("niet_gemaakt", 0),
+        "verkeerd_geboekt": c.get("verkeerd_geboekt", 0),
+        "onverklaard": c.get("onverklaard", 0),
+        "te_verklaren": c.get("onverklaard", 0),   # open punten voor de reminder
     }
 
 
@@ -248,7 +301,7 @@ def bereken_overzicht(periode: str | None = "2026") -> dict:
     """Alle recepten met sales + een Maven-totaalregel."""
     titels = []
     som = {"netto_omzet": 0.0, "kosten_totaal": 0.0, "brutowinst": 0.0,
-           "winstdeling": 0.0, "resultaat": 0.0, "stuks": 0}
+           "winstdeling": 0.0, "resultaat": 0.0, "stuks": 0, "te_verklaren": 0}
     for rid, rec in load_all().items():
         r = bereken_titel(rid, periode)
         if not r or r["netto_omzet"] == 0:
@@ -260,6 +313,7 @@ def bereken_overzicht(periode: str | None = "2026") -> dict:
         som["winstdeling"] += r["winstdeling"]
         som["resultaat"] += r["resultaat"]
         som["stuks"] += r["verkocht"]["totaal"]
+        som["te_verklaren"] += r["accuratesse"]["te_verklaren"]
 
     titels.sort(key=lambda x: x["netto_omzet"], reverse=True)
     omzet = som["netto_omzet"]
@@ -277,5 +331,7 @@ def bereken_overzicht(periode: str | None = "2026") -> dict:
         "ondergrens_pct": ONDERGRENS_PCT,
         "status": _status(marge),
         "aantal_titels": len(titels),
+        "te_verklaren": som["te_verklaren"],
+        "afgesloten": _periode_afgesloten(periode),
     }
     return {"periode": periode, "maven_totaal": maven, "titels": titels}
