@@ -1,9 +1,9 @@
 // View 2 — detail per titel: stroom-uitsplitsing + calculatie-check, kanalen, vormen.
 import { useEffect, useState } from 'react';
-import type { TitelResultaat, GeboekteRegel, Stroom } from './api';
-import { euro, euro2, pct, getal, getKosten, setVerklaring, afsluiten, KANAAL_LABEL, STROOM_STATUS } from './api';
+import type { TitelResultaat, GeboekteRegel, Stroom, OverheadKandidaat } from './api';
+import { euro, euro2, pct, getal, getKosten, setVerklaring, afsluiten, zoekKosten, herkoppel, KANAAL_LABEL, STROOM_STATUS } from './api';
 import { MargeBadge } from './MargeBadge';
-import { ArrowLeft, Lock, Unlock } from 'lucide-react';
+import { ArrowLeft, Lock, Unlock, Search } from 'lucide-react';
 
 const GAP_STATUSSEN = new Set(['verwacht_nog', 'onverklaard', 'niet_gemaakt', 'verkeerd_geboekt']);
 
@@ -141,6 +141,9 @@ export default function TitelDetail({
         </table>
       </div>
 
+      {/* Scenario 2 — ontbrekende kosten in de overhead-pool opsporen */}
+      <OntbrekendeKosten receptId={data.recept_id} onChanged={onRefresh} />
+
       {/* Kanalen + vormen */}
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden">
@@ -215,6 +218,83 @@ export default function TitelDetail({
           aanvang periode). Royalty wordt jaarlijks tegen SFP afgerekend (true-up).
         </p>
       )}
+    </div>
+  );
+}
+
+function OntbrekendeKosten({ receptId, onChanged }: { receptId: string; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [res, setRes] = useState<{ dry_run: boolean; pool: number; kandidaten?: OverheadKandidaat[] } | null>(null);
+  const [gekoppeld, setGekoppeld] = useState<Set<string>>(new Set());
+
+  const zoek = async () => {
+    setBusy(true);
+    try {
+      setRes(await zoekKosten(receptId));
+    } catch {
+      setRes(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const koppel = async (ref: string) => {
+    await herkoppel(ref, receptId);
+    setGekoppeld((s) => new Set(s).add(ref));
+    onChanged();
+  };
+
+  return (
+    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Ontbrekende kosten opsporen</h3>
+          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+            Doorzoekt de Exact-overhead (kosten zonder titel) op posten die eigenlijk bij deze titel horen —
+            zo zie je geen gemaakte kosten over het hoofd.
+          </p>
+        </div>
+        <button
+          onClick={zoek}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-hover)] disabled:opacity-50 transition-colors"
+        >
+          <Search className="w-4 h-4" /> {busy ? 'Zoeken…' : 'Zoek in overhead'}
+        </button>
+      </div>
+
+      {res && res.dry_run && (
+        <p className="mt-3 text-xs text-[var(--text-tertiary)]">
+          LLM-zoeken vereist de <code>ANTHROPIC_API_KEY</code> (op de server). Overhead-pool: {res.pool} regels
+          klaar om te doorzoeken.
+        </p>
+      )}
+      {res && !res.dry_run && (res.kandidaten?.length ? (
+        <div className="mt-3 space-y-2">
+          {res.kandidaten.map((k) => (
+            <div key={k.exact_ref} className="flex items-start justify-between gap-3 border border-[var(--border)] rounded-lg p-2.5">
+              <div className="text-sm">
+                <div className="text-[var(--text-primary)]">
+                  {k.relatie} · {euro(k.bedrag)} <span className="text-[var(--text-tertiary)]">({Math.round(k.confidence * 100)}%)</span>
+                </div>
+                <div className="text-xs text-[var(--text-tertiary)]">{k.grootboek} — {k.reden}</div>
+              </div>
+              {gekoppeld.has(k.exact_ref) ? (
+                <span className="text-xs text-emerald-700 whitespace-nowrap">gekoppeld ✓</span>
+              ) : (
+                <button
+                  onClick={() => koppel(k.exact_ref)}
+                  className="text-xs font-medium px-2.5 py-1 rounded-md bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] whitespace-nowrap"
+                >
+                  Koppel aan titel
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-xs text-[var(--text-tertiary)]">Geen kandidaten gevonden in {res.pool} overhead-regels.</p>
+      ))}
     </div>
   );
 }

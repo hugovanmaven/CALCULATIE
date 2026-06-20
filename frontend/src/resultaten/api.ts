@@ -140,6 +140,22 @@ export const setVerklaring = (recept_id: string, periode: string, stroom: string
 export const afsluiten = (periode: string, afgesloten: boolean) =>
   post('/afsluiten', { periode, afgesloten });
 
+export interface OverheadKandidaat {
+  exact_ref: string;
+  relatie: string;
+  grootboek: string;
+  omschrijving: string;
+  bedrag: number;
+  confidence: number;
+  reden: string;
+}
+
+export const zoekKosten = (recept_id: string) =>
+  post<{ dry_run: boolean; pool: number; kandidaten?: OverheadKandidaat[] }>('/zoek-kosten', { recept_id });
+
+export const herkoppel = (exact_ref: string, recept_id: string) =>
+  post('/herkoppel', { exact_ref, recept_id });
+
 // Status van een stroom (calculatie-check) → label + chip-kleur.
 export const STROOM_STATUS: Record<string, { label: string; cls: string }> = {
   geboekt: { label: 'geboekt', cls: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20' },

@@ -168,6 +168,35 @@ def afsluiten():
     return jsonify({"ok": True, "periode": periode, "afgesloten": s.afgesloten})
 
 
+@bp.post("/zoek-kosten")
+def zoek_kosten():
+    """Scenario 2 — zoek overhead-regels die bij deze titel horen (LLM).
+
+    Body: ``{recept_id, dry_run?}``. Zonder API-key automatisch dry-run.
+    """
+    from . import overhead
+    b = request.get_json(silent=True) or {}
+    recept_id = b.get("recept_id")
+    if not recept_id or not bereken.get_titel(recept_id):
+        return jsonify({"error": "onbekende titel"}), 404
+    dry = bool(b.get("dry_run")) or not os.environ.get("ANTHROPIC_API_KEY")
+    return jsonify(overhead.zoek_kandidaten(recept_id, dry_run=dry))
+
+
+@bp.post("/herkoppel")
+def herkoppel():
+    """Koppel een overhead-regel alsnog aan een titel. Body: ``{exact_ref, recept_id}``."""
+    from . import overhead
+    b = request.get_json(silent=True) or {}
+    rec = bereken.get_titel(b.get("recept_id"))
+    if not rec:
+        return jsonify({"error": "onbekende titel"}), 404
+    isbn = rec.get("titel_input", {}).get("isbn", "")
+    if not b.get("exact_ref") or not isbn:
+        return jsonify({"error": "exact_ref en titel met ISBN vereist"}), 400
+    return jsonify(overhead.herkoppel(b["exact_ref"], isbn))
+
+
 @bp.get("/mapping")
 def mapping_list():
     """Geleerde mappings (leverancier/patroon → calculatie-post)."""
