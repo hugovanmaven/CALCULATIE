@@ -94,8 +94,10 @@ def _geboekt_per_stroom(isbn: str, periode: str | None) -> dict:
     if not isbn:
         return uit
     q = KostenGeboekt.query.filter_by(isbn=isbn)
-    if periode:
+    if periode and "-" in str(periode):          # "2026-Q2" → exact kwartaal
         q = q.filter(KostenGeboekt.periode == periode)
+    elif periode:                                # "2026" → heel jaar
+        q = q.filter(KostenGeboekt.periode.like(f"{periode}-%"))
     for r in q.all():
         if r.categorie == "campagne":
             stroom = "campagne"
@@ -176,7 +178,7 @@ def bereken_titel(recept_id: str, periode: str | None = "2026") -> dict | None:
         "royalty": round(royalty_begroot, 2),
         "overig": round(netto_omzet * t.overige_kosten_pct, 2),
     }
-    geboekt = _geboekt_per_stroom(t.isbn, periode if periode and "-" in str(periode) else None)
+    geboekt = _geboekt_per_stroom(t.isbn, periode)
 
     # ── max(begroot, geboekt) per stroom ──
     stromen = []

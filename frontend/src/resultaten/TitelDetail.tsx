@@ -1,10 +1,16 @@
 // View 2 — detail per titel: stroom-uitsplitsing, kanalen, vormen, royalty.
-import type { TitelResultaat } from './api';
-import { euro, euro2, pct, getal, KANAAL_LABEL } from './api';
+import { useEffect, useState } from 'react';
+import type { TitelResultaat, GeboekteRegel } from './api';
+import { euro, euro2, pct, getal, getKosten, KANAAL_LABEL } from './api';
 import { MargeBadge } from './MargeBadge';
 import { ArrowLeft } from 'lucide-react';
 
 export default function TitelDetail({ data, onBack }: { data: TitelResultaat; onBack: () => void }) {
+  const [regels, setRegels] = useState<GeboekteRegel[]>([]);
+  useEffect(() => {
+    getKosten(data.isbn, data.periode).then(setRegels).catch(() => setRegels([]));
+  }, [data.isbn, data.periode]);
+
   return (
     <div className="space-y-4">
       <button
@@ -116,6 +122,37 @@ export default function TitelDetail({ data, onBack }: { data: TitelResultaat; on
           </table>
         </div>
       </div>
+
+      {/* Geboekte Exact-regels achter de cijfers */}
+      {regels.length > 0 && (
+        <details className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden group">
+          <summary className="px-4 py-2.5 cursor-pointer select-none text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
+            Geboekte Exact-regels ({regels.length})
+          </summary>
+          <table className="w-full text-sm border-t border-[var(--border)]">
+            <thead>
+              <tr className="text-[var(--text-tertiary)] text-xs border-b border-[var(--border)]">
+                <th className="text-left font-medium px-4 py-2">Datum</th>
+                <th className="text-left font-medium px-3 py-2">Relatie</th>
+                <th className="text-left font-medium px-3 py-2 hidden sm:table-cell">Grootboek</th>
+                <th className="text-left font-medium px-3 py-2">Stroom</th>
+                <th className="text-right font-medium px-4 py-2">Bedrag</th>
+              </tr>
+            </thead>
+            <tbody>
+              {regels.map((r) => (
+                <tr key={r.exact_ref} className="border-b border-[var(--border)] last:border-0">
+                  <td className="px-4 py-2 text-[var(--text-tertiary)] tabular-nums">{r.datum}</td>
+                  <td className="px-3 py-2 text-[var(--text-primary)]">{r.relatie || '—'}</td>
+                  <td className="px-3 py-2 text-[var(--text-tertiary)] hidden sm:table-cell">{r.grootboek}</td>
+                  <td className="px-3 py-2 text-[var(--text-secondary)]">{r.categorie}</td>
+                  <td className="px-4 py-2 text-right tabular-nums text-[var(--text-primary)]">{euro(r.bedrag)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
 
       {data.royalty_staffel_pct > 0 && (
         <p className="text-xs text-[var(--text-tertiary)] px-1">

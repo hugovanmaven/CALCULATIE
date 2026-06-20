@@ -80,6 +80,31 @@ export async function checkEnabled(): Promise<boolean> {
   }
 }
 
+export interface GeboekteRegel {
+  exact_ref: string;
+  datum: string;
+  relatie: string;
+  grootboek: string;
+  omschrijving: string;
+  stroom: string;
+  categorie: string;
+  bedrag: number;
+  calculatie_post: string;
+  match_bron: string;
+  match_confidence: number | null;
+}
+
+export async function importExact(file: File): Promise<{ rijen: number; nieuw: number; bijgewerkt: number }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(BASE + '/import/exact', { method: 'POST', body: fd });
+  if (!res.ok) throw new Error(`Import ${res.status}`);
+  return res.json();
+}
+
+export const getKosten = (isbn: string, periode: string) =>
+  get<{ isbn: string; regels: GeboekteRegel[] }>(`/kosten/${isbn}?periode=${encodeURIComponent(periode)}`).then(r => r.regels);
+
 export const getPeriodes = () => get<{ periodes: string[] }>('/periodes').then(r => r.periodes);
 export const getOverzicht = (periode: string) => get<Overzicht>(`/overzicht?periode=${encodeURIComponent(periode)}`);
 export const getTitel = (id: string, periode: string) =>

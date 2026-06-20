@@ -4,6 +4,7 @@ import { getOverzicht, getPeriodes, getTitel } from './api';
 import type { Overzicht, TitelResultaat } from './api';
 import OverzichtTable from './OverzichtTable';
 import TitelDetail from './TitelDetail';
+import ImportPanel from './ImportPanel';
 
 export default function ResultatenView() {
   const [periodes, setPeriodes] = useState<string[]>([]);
@@ -12,6 +13,7 @@ export default function ResultatenView() {
   const [detail, setDetail] = useState<TitelResultaat | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     getPeriodes()
@@ -30,7 +32,7 @@ export default function ResultatenView() {
       .then((d) => setOverzicht(d))
       .catch(() => setError('Kon resultaten niet laden.'))
       .finally(() => setLoading(false));
-  }, [periode]);
+  }, [periode, reloadKey]);
 
   const openDetail = (id: string) => {
     getTitel(id, periode)
@@ -65,7 +67,10 @@ export default function ResultatenView() {
       ) : detail ? (
         <TitelDetail data={detail} onBack={() => setDetail(null)} />
       ) : overzicht ? (
-        <OverzichtTable data={overzicht} onOpen={openDetail} />
+        <div className="space-y-4">
+          <OverzichtTable data={overzicht} onOpen={openDetail} />
+          <ImportPanel onImported={() => setReloadKey((k) => k + 1)} />
+        </div>
       ) : null}
     </div>
   );
