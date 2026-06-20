@@ -97,6 +97,19 @@ def _periode_query(periode: str | None):
     return q
 
 
+def beschikbare_periodes() -> list[str]:
+    """Periodes met verkoop, nieuw→oud: per jaar het jaar + de kwartalen."""
+    paren = {(r.jaar, next((k for k, wk in KWARTAAL_MARKER.items() if wk == r.weeknummer), 1))
+             for r in SalesSnapshot.query.all() if r.jaar}
+    jaren = sorted({j for j, _ in paren}, reverse=True)
+    uit = []
+    for j in jaren:
+        uit.append(str(j))
+        for kw in sorted({k for jj, k in paren if jj == j}, reverse=True):
+            uit.append(f"{j}-Q{kw}")
+    return uit
+
+
 def titel_namen(periode: str | None = None) -> list[str]:
     """Alle titel(groep)-namen met verkoop in de periode (voor het overzicht)."""
     return sorted({r.titel_naam for r in _periode_query(periode).all() if r.titel_naam})
