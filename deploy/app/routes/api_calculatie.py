@@ -765,20 +765,18 @@ def simulate_oplage():
             for staffel, per_ex, vs in _royalty_partijen if vs > 0
         )
 
+    # Drukkosten van de gedrukte oplage zijn cash-out vooraf en tellen als
+    # vaste investering — niet per verkocht exemplaar. Je betaalt de hele druk,
+    # of je nu 1 of alles verkoopt. Alleen exemplaren bóven de gedrukte oplage
+    # vergen een nieuwe druk en krijgen wél variabele drukkosten (laatste tarief).
+    _last_druk_rate = (
+        drukken_config[-1].get("drukkosten_per_ex", 1.20) if drukken_config else 1.20
+    )
+
     def calc_result_at_volume(vol):
         """Calculate net result at a given total volume sold."""
-        # Drukkosten: sum up per-druk, capped at the volume
-        druk_costs = 0
-        remaining = vol
-        for d in drukken_config:   # al gesorteerd op druknummer
-            druk_vol = min(remaining, d.get("oplage", 0))
-            druk_costs += druk_vol * d.get("drukkosten_per_ex", 0)
-            remaining -= druk_vol
-            if remaining <= 0:
-                break
-        if remaining > 0 and drukken_config:
-            last_druk = drukken_config[-1]   # hoogste druknummer
-            druk_costs += remaining * last_druk.get("drukkosten_per_ex", 1.20)
+        # Drukkosten boven de gedrukte oplage: nieuwe druk nodig, dus variabel.
+        extra_drukkosten = max(0, vol - totaal_oplage) * _last_druk_rate
 
         # Royalty-kosten per partij (staffel-bewust). Mét voorschot: Maven betaalt
         # minimaal het voorschot tot het is ingelopen, daarna de (hogere) verdiende
@@ -788,8 +786,10 @@ def simulate_oplage():
             verdiend = _royalty_op_volume(staffel, per_ex, vol)
             royalty_kosten += max(vs, verdiend) if vs > 0 else verdiend
 
-        effective_fixed = totaal_eenmalig + extra_derden_voorschot
-        net_result = vol * basis_per_ex - druk_costs - effective_fixed - royalty_kosten
+        # Vaste investering: kostenposten 1e druk + royalty-voorschotten derden
+        # + drukkosten van de volledige gedrukte oplage.
+        effective_fixed = totaal_eenmalig + extra_derden_voorschot + totaal_drukkosten
+        net_result = vol * basis_per_ex - extra_drukkosten - effective_fixed - royalty_kosten
 
         total_omzet = vol * netto_omzet_per_ex
         marge = net_result / total_omzet if total_omzet > 0 else -10
@@ -825,7 +825,9 @@ def simulate_oplage():
                 high = mid
             if high - low <= 10:
                 break
-        return max(((high + 24) // 50) * 50, 50)
+        # Naar boven afronden op 50: `high` is het laagste volume waar netto >= 0,
+        # dus rond niet omlaag (anders toont de tile een aantal dat nog verlies draait).
+        return max(((high + 49) // 50) * 50, 50)
 
     # Voorschot earn-out: oplage waarop de verdiende royalty's het voorschot
     # dekken. Staffel-bewust, dus numeriek gezocht (de royalty klimt non-lineair).
