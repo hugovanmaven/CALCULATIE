@@ -20,6 +20,8 @@ import os
 
 from flask import Blueprint, current_app, jsonify, request
 
+from .. import mcp_oauth
+
 bp = Blueprint("mcp", __name__)
 
 # Onderliggende web-API hangt onder dit prefix (zie routes/__init__.py).
@@ -338,14 +340,28 @@ def _error(req_id, code, message):
     return jsonify({"jsonrpc": "2.0", "id": req_id, "error": {"code": code, "message": message}})
 
 
-def _auth_ok() -> bool:
-    expected = os.environ.get("MCP_TOKEN", "")
-    if not expected:
-        return False  # fail-closed: niet geconfigureerd = dicht
+def _bearer() -> str:
+    """Token uit de Authorization-header, X-API-Key, of de URL-query
+    (?token= / ?key=). De query-variant maakt het mogelijk een claude.ai
+    custom connector zónder header-veld te koppelen."""
     header = request.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
+    if header.startswith("Bearer "):
+        return header[7:]
+    api_key = request.headers.get("X-API-Key", "")
+    if api_key:
+        return api_key
+    return request.args.get("token") or request.args.get("key") or ""
+
+
+def _authorized() -> bool:
+    """Geldig met een OAuth-accesstoken óf (optioneel) de statische token."""
+    token = _bearer()
+    if not token:
         return False
-    return hmac.compare_digest(header[7:], expected)
+    if mcp_oauth.validate_access_token(token):
+        return True
+    static = os.environ.get("MCP_TOKEN", "")
+    return bool(static) and hmac.compare_digest(token, static)
 
 
 def _handle_rpc(msg: dict):
@@ -394,11 +410,11 @@ def _handle_rpc(msg: dict):
 
 @bp.route("/mcp", methods=["POST"])
 def mcp_endpoint():
-    if not os.environ.get("MCP_TOKEN"):
-        return jsonify({"error": "MCP niet geconfigureerd (MCP_TOKEN ontbreekt)."}), 503
-    if not _auth_ok():
-        resp = jsonify({"error": "Ongeldige of ontbrekende token."})
-        resp.headers["WWW-Authenticate"] = 'Bearer realm="maven-calculatie"'
+    if not _authorized():
+        # WWW-Authenticate met resource_metadata → claude.ai start de OAuth-flow.
+        meta = f"{mcp_oauth.PUBLIC_BASE_URL}/.well-known/oauth-protected-resource"
+        resp = jsonify({"error": "Unauthorized"})
+        resp.headers["WWW-Authenticate"] = f'Bearer resource_metadata="{meta}"'
         return resp, 401
 
     msg = request.get_json(silent=True)
