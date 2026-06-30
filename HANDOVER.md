@@ -92,8 +92,9 @@ git. Voor nieuwe Python-deps: in `deploy/requirements.txt`.
 5. **Sales-MCP integratie** — Sanders bestaande tool kan in onze
    werksessies gebruikt worden. Niet bouwen, gewoon inzetten als Hugo
    data van Sander nodig heeft.
-6. **Calculatie-MCP** (nieuw) — zodat Hugo in andere chats kan
-   chatten over marges. Aparte sessie.
+6. ~~**Calculatie-MCP**~~ — **gebouwd** (read-only). Zie sectie hieronder.
+   Vervolg: OAuth (org-connector zonder token-geplak) + optioneel
+   read-write-tools.
 
 ### Recent gemerged (afgelopen sessie)
 
@@ -101,6 +102,24 @@ git. Voor nieuwe Python-deps: in `deploy/requirements.txt`.
 - PR #8: Dode code en historische bestanden opruimen (30 files weg)
 - Hotfix: voorschot alleen meetellen bij actieve royalty-deal
 - PR #9: Excel-export herzien (2 tabs + alle deals + voorschot-blok)
+
+## Calculatie-MCP (read-only)
+
+MCP-server zodat je in elke Claude-chat met de calculatie-app kunt praten.
+Eén Flask-blueprint (`deploy/app/routes/mcp.py`), top-level op `/mcp`, dat de
+bestaande API in-process aanroept. Geen extra dependencies, geen tweede service.
+
+- **Connector-URL**: `https://calculatie.maven-company.com/mcp`
+- **Auth**: bearer-token in Railway env-var `MCP_TOKEN` (lange random string).
+  Zonder die var is het endpoint dicht (503, fail-closed).
+- **Tools** (alleen lezen): `lijst_titels`, `titel_detail`, `bereken`
+  (what-if), `simuleer_oplage`, `gevoeligheid_cac`, `gevoeligheid_prijs`.
+- **Toevoegen in een client** (Claude Desktop/Code → custom connector):
+  URL `https://calculatie.maven-company.com/mcp` + header
+  `Authorization: Bearer <MCP_TOKEN>`. Eén keer per teamlid.
+- **Lokaal testen**: `MCP_TOKEN=... python3 run.py`, dan POST JSON-RPC naar
+  `localhost:5001/mcp`. Tests: `pytest tests/test_mcp.py`.
+- **Vervolg**: OAuth (org-breed zonder token-geplak) + evt. read-write.
 
 ## Belangrijke logica om te onthouden
 
