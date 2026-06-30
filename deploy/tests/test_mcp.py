@@ -26,15 +26,18 @@ def client(tmp_path):
     # Geïsoleerde sqlite-DB + token vóór create_app (factory leest env in).
     os.environ["MCP_TOKEN"] = TOKEN
     os.environ["DATABASE_URL"] = f"sqlite:///{tmp_path}/test.sqlite"
+    os.environ["MCP_OAUTH_ALLOWED_EMAIL_DOMAINS"] = "mavenpublishing.nl"
     from app import create_app
     import app.mcp_oauth as oauth
     # OAuth-store isoleren naar de test-tmp (anders schrijft hij in deploy/data).
     oauth._DATA_DIR = str(tmp_path)
     oauth.OAUTH_DB_PATH = str(tmp_path / "mcp_oauth.db")
+    oauth._initialized.discard(oauth.OAUTH_DB_PATH)
     app = create_app()
     with app.test_client() as c:
         yield c
     os.environ.pop("DATABASE_URL", None)
+    os.environ.pop("MCP_OAUTH_ALLOWED_EMAIL_DOMAINS", None)
 
 
 def rpc(client, method, params=None, req_id=1, auth=True):
@@ -148,6 +151,25 @@ def test_oauth_end_to_end(client):
                     headers={"Authorization": f"Bearer {access}"})
     assert r.status_code == 200
     assert "result" in r.get_json()
+
+
+def test_authorize_fails_closed_without_allowed_domains(client):
+    # Zonder geconfigureerde domeinen mag authorize géén code uitgeven.
+    cid = client.post(
+        "/mcp/oauth/register", json={"client_name": "t", "redirect_uris": [REDIRECT]}
+    ).get_json()["client_id"]
+    challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(b"v").digest()
+    ).rstrip(b"=").decode()
+    os.environ.pop("MCP_OAUTH_ALLOWED_EMAIL_DOMAINS", None)
+    try:
+        r = client.get("/mcp/oauth/authorize", query_string={
+            "response_type": "code", "client_id": cid, "redirect_uri": REDIRECT,
+            "code_challenge": challenge, "code_challenge_method": "S256", "scope": "mcp",
+        }, headers={"Cf-Access-Authenticated-User-Email": "hugo@mavenpublishing.nl"})
+        assert r.status_code == 403
+    finally:
+        os.environ["MCP_OAUTH_ALLOWED_EMAIL_DOMAINS"] = "mavenpublishing.nl"
 
 
 def test_pkce_mismatch_rejected(client):

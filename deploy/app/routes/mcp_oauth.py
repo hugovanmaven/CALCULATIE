@@ -25,11 +25,14 @@ from .. import mcp_oauth
 
 bp = Blueprint("mcp_oauth", __name__)
 
-_ALLOWED_DOMAINS = [
-    d.strip().lower()
-    for d in os.environ.get("MCP_OAUTH_ALLOWED_EMAIL_DOMAINS", "").split(",")
-    if d.strip()
-]
+
+def _allowed_domains():
+    """Toegestane e-maildomeinen, op call-time uit de env gelezen."""
+    return [
+        d.strip().lower()
+        for d in os.environ.get("MCP_OAUTH_ALLOWED_EMAIL_DOMAINS", "").split(",")
+        if d.strip()
+    ]
 
 
 def _no_store(resp):
@@ -96,11 +99,14 @@ def authorize():
         return _back({"error": "invalid_request", "state": state})
 
     # Identiteit komt van Cloudflare Access (endpoint blijft achter Access).
+    # Fail-closed: zonder geconfigureerde toegestane domeinen geven we niets uit.
+    allowed = _allowed_domains()
+    if not allowed:
+        return Response("server misconfigured: geen toegestane e-maildomeinen", status=403)
     user_email = request.headers.get("Cf-Access-Authenticated-User-Email", "")
-    if _ALLOWED_DOMAINS:
-        dom = user_email.split("@")[-1].lower() if "@" in user_email else ""
-        if dom not in _ALLOWED_DOMAINS:
-            return Response("forbidden: e-mail niet toegestaan", status=403)
+    dom = user_email.split("@")[-1].lower() if "@" in user_email else ""
+    if dom not in allowed:
+        return Response("forbidden: e-mail niet toegestaan", status=403)
 
     code = mcp_oauth.create_auth_code(
         client_id, redirect_uri, code_challenge, user_email, scope, resource

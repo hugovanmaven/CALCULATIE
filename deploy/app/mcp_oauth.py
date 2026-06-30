@@ -67,11 +67,17 @@ CREATE TABLE IF NOT EXISTS tokens (
 """
 
 
+_initialized: set[str] = set()
+
+
 def _conn():
     os.makedirs(_DATA_DIR, exist_ok=True)
     conn = sqlite3.connect(OAUTH_DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
-    conn.executescript(_SCHEMA)
+    # Schema één keer per DB-bestand aanmaken i.p.v. bij elke connectie.
+    if OAUTH_DB_PATH not in _initialized:
+        conn.executescript(_SCHEMA)
+        _initialized.add(OAUTH_DB_PATH)
     return conn
 
 
@@ -128,6 +134,8 @@ def create_auth_code(client_id, redirect_uri, code_challenge, user_email,
                      scope="mcp", resource=""):
     code = secrets.token_urlsafe(32)
     with _conn() as c:
+        # Opschonen: verlopen of al gebruikte codes hebben geen waarde meer.
+        c.execute("DELETE FROM auth_codes WHERE used = 1 OR expires_at < ?", (_now(),))
         c.execute(
             "INSERT INTO auth_codes (code_hash, client_id, redirect_uri, "
             "code_challenge, scope, user_email, expires_at, resource) "
@@ -157,7 +165,12 @@ def consume_auth_code(code, client_id, redirect_uri):
             return None
         if row["client_id"] != client_id or row["redirect_uri"] != redirect_uri:
             return None
-        c.execute("UPDATE auth_codes SET used = 1 WHERE code_hash = ?", (h,))
+        # Race-veilig: alleen de request die used 0→1 flipt wint de code.
+        cur = c.execute(
+            "UPDATE auth_codes SET used = 1 WHERE code_hash = ? AND used = 0", (h,)
+        )
+        if cur.rowcount != 1:
+            return None
     return dict(row)
 
 
@@ -176,6 +189,12 @@ def _issue(client_id, user_email, scope, resource=""):
     refresh = secrets.token_urlsafe(32)
     now = _now()
     with _conn() as c:
+        # Opschonen: rijen waarvan zowel access- als refresh-token verlopen zijn.
+        c.execute(
+            "DELETE FROM tokens WHERE expires_at < ? "
+            "AND (refresh_expires_at IS NULL OR refresh_expires_at < ?)",
+            (now, now),
+        )
         c.execute(
             "INSERT INTO tokens (token_hash, client_id, scope, user_email, "
             "expires_at, refresh_hash, refresh_expires_at, resource) "
