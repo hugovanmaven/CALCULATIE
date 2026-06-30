@@ -103,23 +103,32 @@ git. Voor nieuwe Python-deps: in `deploy/requirements.txt`.
 - Hotfix: voorschot alleen meetellen bij actieve royalty-deal
 - PR #9: Excel-export herzien (2 tabs + alle deals + voorschot-blok)
 
-## Calculatie-MCP (read-only)
+## Calculatie-MCP (read-only) + OAuth
 
-MCP-server zodat je in elke Claude-chat met de calculatie-app kunt praten.
-Eén Flask-blueprint (`deploy/app/routes/mcp.py`), top-level op `/mcp`, dat de
-bestaande API in-process aanroept. Geen extra dependencies, geen tweede service.
+MCP-server zodat het team in elke Claude-chat met de calculatie-app kan praten.
+Top-level op `/mcp` (`deploy/app/routes/mcp.py`), hergebruikt de bestaande API
+in-process. Geen extra dependencies, geen tweede service.
 
 - **Connector-URL**: `https://calculatie.maven-company.com/mcp`
-- **Auth**: bearer-token in Railway env-var `MCP_TOKEN` (lange random string).
-  Zonder die var is het endpoint dicht (503, fail-closed).
 - **Tools** (alleen lezen): `lijst_titels`, `titel_detail`, `bereken`
   (what-if), `simuleer_oplage`, `gevoeligheid_cac`, `gevoeligheid_prijs`.
-- **Toevoegen in een client** (Claude Desktop/Code → custom connector):
-  URL `https://calculatie.maven-company.com/mcp` + header
-  `Authorization: Bearer <MCP_TOKEN>`. Eén keer per teamlid.
-- **Lokaal testen**: `MCP_TOKEN=... python3 run.py`, dan POST JSON-RPC naar
-  `localhost:5001/mcp`. Tests: `pytest tests/test_mcp.py`.
-- **Vervolg**: OAuth (org-breed zonder token-geplak) + evt. read-write.
+- **Auth — twee paden** (`mcp.py::_authorized`):
+  1. **OAuth 2.1** (`deploy/app/mcp_oauth.py` + `routes/mcp_oauth.py`): DCR +
+     PKCE; mens-login = **Cloudflare Access OTP** vóór `/mcp/oauth/authorize`
+     (leest `Cf-Access-Authenticated-User-Email`, gate op
+     `MCP_OAUTH_ALLOWED_EMAIL_DOMAINS`). Dit is het pad voor de claude.ai
+     Team-connector (web/desktop/iPhone). Geport van Sanders maven-sales MCP.
+  2. **Statische token** via header / `X-API-Key` / `?token=` tegen env
+     `MCP_TOKEN` — optioneel, voor curl/Code/Desktop.
+- **Railway env**: `MCP_OAUTH_ALLOWED_EMAIL_DOMAINS=mavenpublishing.nl`
+  (en optioneel `MCP_TOKEN`). `MCP_PUBLIC_BASE_URL` is optioneel — default is
+  al de productie-URL. OAuth-store = aparte SQLite op het volume (`mcp_oauth.db`).
+- **Cloudflare**: hele subdomein achter Access (OTP, `mavenpublishing.nl`);
+  **bypass** op de machine-paden `/.well-known/oauth-*`, `/mcp`,
+  `/mcp/oauth/register`, `/mcp/oauth/token`. NIET op `/mcp/oauth/authorize`
+  (dat blijft achter Access — dat ís de login).
+- **Verifiëren**: `scripts/verify_mcp_oauth.sh` (discovery, 401+WWW-Authenticate,
+  DCR). Lokaal: `MCP_TOKEN=... python3 run.py`; `pytest tests/test_mcp.py`.
 
 ## Belangrijke logica om te onthouden
 
