@@ -37,8 +37,18 @@ def create_app():
     from .db import db
     db.init_app(app)
 
+    # Resultaten-module (geïsoleerd, achter feature flag) — modellen importeren
+    # zodat create_all() de res_-tabellen aanmaakt. Met de flag uit raakt de
+    # module de app niet aan. Verwijderen = dit blok weg.
+    from .resultaten import is_enabled as _resultaten_enabled
+    if _resultaten_enabled():
+        from .resultaten import models as _resultaten_models  # noqa: F401
+
     with app.app_context():
         db.create_all()
+        if _resultaten_enabled():
+            from .resultaten import ensure_schema as _resultaten_ensure_schema
+            _resultaten_ensure_schema()
         from . import storage_calculatie as storage
         # Lichte schema-migratie (kolommen die create_all niet toevoegt aan
         # bestaande tabellen, bv. 'version' voor optimistic locking).

@@ -13,3 +13,8 @@ def register_blueprints(app):
     app.register_blueprint(mcp_bp)
     # OAuth 2.1 voor de MCP-connector: discovery + /mcp/oauth/*, top-level.
     app.register_blueprint(mcp_oauth_bp)
+    # Resultaten-module (geïsoleerd, achter feature flag) — verwijderen = dit blok weg
+    from ..resultaten import is_enabled as _resultaten_enabled
+    if _resultaten_enabled():
+        from ..resultaten.routes import bp as resultaten_bp
+        app.register_blueprint(resultaten_bp, url_prefix="/resultaten/api")
