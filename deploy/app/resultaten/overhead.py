@@ -115,6 +115,7 @@ def herkoppel(exact_ref: str, isbn: str, *, periode: str | None = None) -> dict:
     if not r:
         return {"error": "regel niet gevonden"}
     r.isbn = isbn
+    r.dispositie = ""      # gekoppeld aan titel → eerdere verdeeld/genegeerd-keuze vervalt
     r.match_bron = "mens"
     db.session.commit()
     return {"ok": True, "exact_ref": exact_ref, "isbn": isbn, "bedrag": float(r.bedrag or 0)}

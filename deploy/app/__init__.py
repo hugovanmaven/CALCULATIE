@@ -46,6 +46,9 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        if _resultaten_enabled():
+            from .resultaten import ensure_schema as _resultaten_ensure_schema
+            _resultaten_ensure_schema()
         from . import storage_calculatie as storage
         # Lichte schema-migratie (kolommen die create_all niet toevoegt aan
         # bestaande tabellen, bv. 'version' voor optimistic locking).

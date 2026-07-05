@@ -67,7 +67,9 @@ export default function App() {
 
   let content: React.ReactNode;
   if (section === 'resultaten') {
-    content = <ResultatenView />;
+    // Zit je in de calculatie op een titel, dan opent Resultaten diezelfde
+    // titel — je kijkt immers naar hetzelfde boek vanuit een andere hoek.
+    content = <ResultatenView initialTitelId={view.kind === 'detail' ? view.titelId : null} />;
   } else if (view.kind === 'detail') {
     content = <DetailView titelId={view.titelId} onBack={handleBack} />;
   } else {

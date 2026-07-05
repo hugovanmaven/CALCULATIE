@@ -1,11 +1,16 @@
-// View 2 — detail per titel: stroom-uitsplitsing + calculatie-check, kanalen, vormen.
-import { useEffect, useState } from 'react';
-import type { TitelResultaat, GeboekteRegel, Stroom, OverheadKandidaat } from './api';
-import { euro, euro2, pct, getal, getKosten, setVerklaring, afsluiten, zoekKosten, herkoppel, KANAAL_LABEL, STROOM_STATUS } from './api';
+// View 2 — detail per titel: verifieerbare opbouw van omzet naar resultaat,
+// met calculatie-check op de boekbare kosten. Terminologie volgt de calculatie-app.
+import { useEffect, useMemo, useState } from 'react';
+import type { TitelResultaat, GeboekteRegel, Stroom, OverheadKandidaat, TitelKeuze } from './api';
+import { euro, euro2, pct, getal, getKosten, setVerklaring, afsluiten, zoekKosten, herkoppel, ontkoppel, wijsToe, getTitels, KANAAL_LABEL, STROOM_STATUS } from './api';
 import { MargeBadge } from './MargeBadge';
-import { ArrowLeft, Lock, Unlock, Search } from 'lucide-react';
+import { Tile, TitelSelect } from './ui';
+import { ArrowLeft, Lock, Unlock, Search, Info, ChevronRight, ChevronDown } from 'lucide-react';
 
 const GAP_STATUSSEN = new Set(['verwacht_nog', 'onverklaard', 'niet_gemaakt', 'verkeerd_geboekt']);
+// Afwijking is 'materieel' (vraagt actief om toelichting) vanaf dit bedrag;
+// kleinere gaten (een paar honderd euro) tonen we rustig, zonder aandrang.
+const MATERIEEL = 1000;
 
 export default function TitelDetail({
   data,
@@ -18,11 +23,20 @@ export default function TitelDetail({
 }) {
   const [regels, setRegels] = useState<GeboekteRegel[]>([]);
   const [edit, setEdit] = useState<string | null>(null); // stroom-key in bewerking
+  const [openStroom, setOpenStroom] = useState<string | null>(null);
+  const [titels, setTitels] = useState<TitelKeuze[]>([]);
   const isKwartaal = data.periode.includes('-');
 
   useEffect(() => {
     getKosten(data.isbn, data.periode).then(setRegels).catch(() => setRegels([]));
   }, [data.isbn, data.periode]);
+  useEffect(() => { getTitels().then(setTitels).catch(() => {}); }, []);
+
+  const regelsPerStroom = useMemo(() => {
+    const map: Record<string, GeboekteRegel[]> = {};
+    for (const r of regels) (map[r.resultaten_stroom] ??= []).push(r);
+    return map;
+  }, [regels]);
 
   const teVerklaren = data.accuratesse.te_verklaren;
 
@@ -47,20 +61,20 @@ export default function TitelDetail({
         </div>
       </div>
 
-      {/* KPI's */}
+      {/* KPI's — zelfde volgorde als de opbouw: omzet → brutowinst → resultaat */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card label="Verkocht" value={getal(data.verkocht.totaal)} sub="exemplaren" />
-        <Card label="Netto omzet" value={euro(data.netto_omzet)} />
-        <Card
-          label="Brutowinst"
-          value={euro(data.brutowinst)}
-          extra={<MargeBadge marge={data.marge_pct} status={data.status} />}
+        <Tile label="Verkocht" value={getal(data.verkocht.totaal)} sub="exemplaren" />
+        <Tile label="Netto omzet" value={euro(data.netto_omzet)} />
+        <Tile label="Brutowinst" value={euro(data.brutowinst)} sub={`marge ${pct(data.marge_pct)}`} />
+        <Tile
+          label="Resultaat na winstdeling"
+          value={euro(data.resultaat)}
+          extra={<MargeBadge marge={data.resultaat_marge_pct} status={data.status} />}
           sub={`streef ${pct(data.streef_pct)}`}
         />
-        <Card label="Resultaat" value={euro(data.resultaat)} sub={`na winstdeling · ${pct(data.resultaat_marge_pct)}`} />
       </div>
 
-      <MargeBalk marge={data.marge_pct} streef={data.streef_pct} ondergrens={data.ondergrens_pct} />
+      <MargeBalk marge={data.resultaat_marge_pct} streef={data.streef_pct} ondergrens={data.ondergrens_pct} />
 
       {/* Calculatie-check banner + kwartaal afsluiten */}
       {isKwartaal && (
@@ -76,15 +90,16 @@ export default function TitelDetail({
             {data.afgesloten ? (
               teVerklaren > 0 ? (
                 <span className="text-amber-800">
-                  — {teVerklaren} {teVerklaren === 1 ? 'post' : 'posten'} nog te verklaren: klopt het dat die kosten
-                  niet gemaakt zijn, of komen ze nog?
+                  — {teVerklaren} kostenpost{teVerklaren === 1 ? '' : 'en'} wijk{teVerklaren === 1 ? 't' : 'en'} af van de calculatie zonder
+                  toelichting.
                 </span>
               ) : (
-                <span className="text-emerald-700">— alle verschillen verklaard ✓</span>
+                <span className="text-emerald-700">— alle afwijkingen t.o.v. de calculatie zijn toegelicht ✓</span>
               )
             ) : (
               <span className="text-[var(--text-tertiary)]">
-                — kwartaal nog open; ongeboekte posten gelden als 'verwacht nog'. Sluit af om de balans op te maken.
+                — kwartaal is nog open: nog niet geboekte kosten gelden als "nog te boeken". Sluit het kwartaal af
+                om de balans op te maken.
               </span>
             )}
           </div>
@@ -98,51 +113,116 @@ export default function TitelDetail({
         </div>
       )}
 
-      {/* Stromen + verklaring */}
+      {/* Opbouw van het resultaat — elk bedrag herleidbaar, geboekte regels uitklapbaar */}
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-[var(--border)] flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Kosten per stroom</h3>
-          <span className="text-xs text-[var(--text-tertiary)]">
-            {data.dekkingsgraad_pct > 0 ? `${pct(data.dekkingsgraad_pct)} geboekt` : 'nog geen kosten geboekt'}
-          </span>
+        <div className="px-4 py-2.5 border-b border-[var(--border)]">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Van omzet naar resultaat</h3>
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-[var(--text-tertiary)] text-xs border-b border-[var(--border)]">
-              <th className="text-left font-medium px-4 py-2">Stroom</th>
+              <th className="text-left font-medium px-4 py-2">Post</th>
               <th className="text-right font-medium px-3 py-2">Begroot</th>
-              <th className="text-right font-medium px-3 py-2">Geboekt</th>
-              <th className="text-right font-medium px-3 py-2">Verschil</th>
+              <th className="text-right font-medium px-3 py-2">In Exact</th>
+              <th className="text-right font-medium px-3 py-2">Telt mee</th>
               <th className="text-left font-medium px-3 py-2">Status</th>
             </tr>
           </thead>
           <tbody>
-            {data.stromen.map((s) => (
-              <StroomRow
-                key={s.key}
-                s={s}
-                editing={edit === s.key}
-                onEdit={() => setEdit(edit === s.key ? null : s.key)}
-                onSave={async (status, notitie) => {
-                  await setVerklaring(data.recept_id, data.periode, s.key, status, notitie);
-                  setEdit(null);
-                  onRefresh();
-                }}
-              />
-            ))}
-            <tr className="bg-[var(--bg-hover)] font-semibold">
-              <td className="px-4 py-2 text-[var(--text-primary)]">Totaal kosten</td>
+            <tr className="border-b border-[var(--border)] font-medium">
+              <td className="px-4 py-2 text-[var(--text-primary)]">Netto omzet</td>
               <td></td>
               <td></td>
-              <td></td>
-              <td className="px-3 py-2 text-[var(--text-primary)] tabular-nums">{euro(data.kosten_totaal)}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-[var(--text-primary)]">{euro(data.netto_omzet)}</td>
+              <td className="px-3 py-2 text-xs text-[var(--text-tertiary)]">uit sales</td>
             </tr>
+            {data.stromen
+              .filter((s) => s.status !== 'leeg')
+              .map((s) => (
+                <StroomRow
+                  key={s.key}
+                  s={s}
+                  regels={regelsPerStroom[s.key] ?? []}
+                  titels={titels}
+                  eigenReceptId={data.recept_id}
+                  expanded={openStroom === s.key}
+                  onToggle={() => setOpenStroom(openStroom === s.key ? null : s.key)}
+                  editing={edit === s.key}
+                  onEdit={() => setEdit(edit === s.key ? null : s.key)}
+                  onSave={async (status, notitie) => {
+                    if (!data.recept_id) return;
+                    await setVerklaring(data.recept_id, data.periode, s.key, status, notitie);
+                    setEdit(null);
+                    onRefresh();
+                  }}
+                  onRegelsChanged={() => {
+                    getKosten(data.isbn, data.periode).then(setRegels).catch(() => {});
+                    onRefresh();
+                  }}
+                />
+              ))}
+            <TotaalRij label="Brutowinst" bedrag={data.brutowinst} sub={`marge ${pct(data.marge_pct)}`} />
+            {data.winstdeling > 0 && (
+              <tr className="border-b border-[var(--border)]">
+                <td className="px-4 py-2 text-[var(--text-primary)]">Winstdeling auteurs & derden</td>
+                <td></td>
+                <td></td>
+                <td className="px-3 py-2 text-right tabular-nums text-[var(--text-secondary)]">− {euro(data.winstdeling)}</td>
+                <td className="px-3 py-2 text-xs text-[var(--text-tertiary)]">{pct(data.winstdeling_pct)} van brutowinst</td>
+              </tr>
+            )}
+            <TotaalRij
+              label="Resultaat"
+              bedrag={data.resultaat}
+              sub={pct(data.resultaat_marge_pct)}
+              strong={data.overige_verkoopkosten <= 0.5}
+            />
+            {data.overige_verkoopkosten > 0.5 && (
+              <>
+                <tr className="border-b border-[var(--border)]">
+                  <td className="px-4 py-2 text-[var(--text-primary)]">Overige verkoopkosten (toegerekend)</td>
+                  <td></td>
+                  <td></td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[var(--text-secondary)]">− {euro(data.overige_verkoopkosten)}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--text-tertiary)]">naar rato van omzet</td>
+                </tr>
+                <TotaalRij label="Resultaat na verdeling" bedrag={data.resultaat_na_verdeling} strong />
+              </>
+            )}
           </tbody>
         </table>
       </div>
 
+      {/* Voorschotten — informatief (balans/cash), telt niet in de kwartaalmarge */}
+      {data.voorschotten?.length > 0 && (
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">Voorschotten</h3>
+          <div className="space-y-1.5">
+            {data.voorschotten.map((v) => (
+              <div key={v.partij} className="flex items-center justify-between gap-3 text-sm flex-wrap">
+                <span className="text-[var(--text-secondary)]">
+                  {v.partij} — voorschot {euro(v.voorschot)}
+                </span>
+                {v.open <= 0.5 ? (
+                  <span className="text-xs text-emerald-700">volledig ingelopen ✓</span>
+                ) : (
+                  <span className="text-xs text-[var(--text-tertiary)]">
+                    {euro(v.ingelopen)} ingelopen · <span className="text-amber-700">{euro(v.open)} open</span>
+                    {' '}(royalty verdiend t/m nu: {euro(v.verdiend)})
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-[var(--text-tertiary)] mt-2">
+            Inloopstatus over het hele leven van de titel (incl. SFP-historie). Dit is cash/balans-informatie —
+            de kwartaalmarge rekent met de royalty die dít kwartaal verdiend is.
+          </p>
+        </div>
+      )}
+
       {/* Scenario 2 — ontbrekende kosten in de overhead-pool opsporen */}
-      <OntbrekendeKosten receptId={data.recept_id} onChanged={onRefresh} />
+      {data.recept_id && <OntbrekendeKosten receptId={data.recept_id} onChanged={onRefresh} />}
 
       {/* Kanalen + vormen */}
       <div className="grid sm:grid-cols-2 gap-4">
@@ -181,44 +261,26 @@ export default function TitelDetail({
         </div>
       </div>
 
-      {/* Geboekte Exact-regels achter de cijfers */}
-      {regels.length > 0 && (
-        <details className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] overflow-hidden group">
-          <summary className="px-4 py-2.5 cursor-pointer select-none text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-hover)]">
-            Geboekte Exact-regels ({regels.length})
-          </summary>
-          <table className="w-full text-sm border-t border-[var(--border)]">
-            <thead>
-              <tr className="text-[var(--text-tertiary)] text-xs border-b border-[var(--border)]">
-                <th className="text-left font-medium px-4 py-2">Datum</th>
-                <th className="text-left font-medium px-3 py-2">Relatie</th>
-                <th className="text-left font-medium px-3 py-2 hidden sm:table-cell">Grootboek</th>
-                <th className="text-left font-medium px-3 py-2">Stroom</th>
-                <th className="text-right font-medium px-4 py-2">Bedrag</th>
-              </tr>
-            </thead>
-            <tbody>
-              {regels.map((r) => (
-                <tr key={r.exact_ref} className="border-b border-[var(--border)] last:border-0">
-                  <td className="px-4 py-2 text-[var(--text-tertiary)] tabular-nums">{r.datum}</td>
-                  <td className="px-3 py-2 text-[var(--text-primary)]">{r.relatie || '—'}</td>
-                  <td className="px-3 py-2 text-[var(--text-tertiary)] hidden sm:table-cell">{r.grootboek}</td>
-                  <td className="px-3 py-2 text-[var(--text-secondary)]">{r.categorie}</td>
-                  <td className="px-4 py-2 text-right tabular-nums text-[var(--text-primary)]">{euro(r.bedrag)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </details>
-      )}
-
       {data.royalty_staffel_pct > 0 && (
         <p className="text-xs text-[var(--text-tertiary)] px-1">
-          Royalty-staffel op {pct(data.royalty_staffel_pct)} (groep-cumulatief ± {getal(data.cumulatief_opening)} ex bij
-          aanvang periode). Royalty wordt jaarlijks tegen SFP afgerekend (true-up).
+          Royalty & derden berekend op {pct(data.royalty_staffel_pct)} van de verkoopprijs ex BTW (staffelstand:{' '}
+          {getal(data.cumulatief_opening)} ex cumulatief verkocht bij aanvang periode, inclusief SFP-historie).
+          Royalty wordt jaarlijks tegen SFP afgerekend (true-up).
         </p>
       )}
     </div>
+  );
+}
+
+function TotaalRij({ label, bedrag, sub, strong }: { label: string; bedrag: number; sub?: string; strong?: boolean }) {
+  return (
+    <tr className={`border-b border-[var(--border)] ${strong ? 'bg-[var(--bg-hover)]' : ''} font-semibold`}>
+      <td className="px-4 py-2 text-[var(--text-primary)]">{label}</td>
+      <td></td>
+      <td></td>
+      <td className="px-3 py-2 text-right tabular-nums text-[var(--text-primary)]">{euro(bedrag)}</td>
+      <td className="px-3 py-2 text-xs text-[var(--text-tertiary)]">{sub}</td>
+    </tr>
   );
 }
 
@@ -250,7 +312,7 @@ function OntbrekendeKosten({ receptId, onChanged }: { receptId: string; onChange
         <div>
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">Ontbrekende kosten opsporen</h3>
           <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-            Doorzoekt de Exact-overhead (kosten zonder titel) op posten die eigenlijk bij deze titel horen —
+            Doorzoekt de Exact-kosten zonder titel op posten die eigenlijk bij deze titel horen —
             zo zie je geen gemaakte kosten over het hoofd.
           </p>
         </div>
@@ -259,13 +321,13 @@ function OntbrekendeKosten({ receptId, onChanged }: { receptId: string; onChange
           disabled={busy}
           className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-[var(--border)] hover:bg-[var(--bg-hover)] disabled:opacity-50 transition-colors"
         >
-          <Search className="w-4 h-4" /> {busy ? 'Zoeken…' : 'Zoek in overhead'}
+          <Search className="w-4 h-4" /> {busy ? 'Zoeken…' : 'Zoek in overige kosten'}
         </button>
       </div>
 
       {res && res.dry_run && (
         <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-          LLM-zoeken vereist de <code>ANTHROPIC_API_KEY</code> (op de server). Overhead-pool: {res.pool} regels
+          LLM-zoeken vereist de <code>ANTHROPIC_API_KEY</code> (op de server). Pool: {res.pool} regels
           klaar om te doorzoeken.
         </p>
       )}
@@ -293,7 +355,7 @@ function OntbrekendeKosten({ receptId, onChanged }: { receptId: string; onChange
           ))}
         </div>
       ) : (
-        <p className="mt-3 text-xs text-[var(--text-tertiary)]">Geen kandidaten gevonden in {res.pool} overhead-regels.</p>
+        <p className="mt-3 text-xs text-[var(--text-tertiary)]">Geen kandidaten gevonden in {res.pool} regels.</p>
       ))}
     </div>
   );
@@ -301,38 +363,78 @@ function OntbrekendeKosten({ receptId, onChanged }: { receptId: string; onChange
 
 function StroomRow({
   s,
+  regels,
+  titels,
+  eigenReceptId,
+  expanded,
+  onToggle,
   editing,
   onEdit,
   onSave,
+  onRegelsChanged,
 }: {
   s: Stroom;
+  regels: GeboekteRegel[];
+  titels: TitelKeuze[];
+  eigenReceptId: string | null;
+  expanded: boolean;
+  onToggle: () => void;
   editing: boolean;
   onEdit: () => void;
   onSave: (status: string, notitie: string) => void;
+  onRegelsChanged: () => void;
 }) {
-  const meta = STROOM_STATUS[s.status] ?? { label: s.status, cls: 'bg-gray-100 text-gray-600 ring-gray-500/20' };
+  const meta = STROOM_STATUS[s.status] ?? { label: s.status, cls: 'bg-[var(--bg-hover)] text-[var(--text-secondary)] ring-[var(--border)]', uitleg: '' };
   const isGap = GAP_STATUSSEN.has(s.status);
+  const materieel = Math.abs(s.verschil) >= MATERIEEL;
+  const heeftRegels = regels.length > 0;
+
   return (
     <>
       <tr className="border-b border-[var(--border)]">
-        <td className="px-4 py-2 text-[var(--text-primary)]">{s.label}</td>
-        <td className="px-3 py-2 text-right tabular-nums text-[var(--text-secondary)]">{euro(s.begroot)}</td>
-        <td className="px-3 py-2 text-right tabular-nums text-[var(--text-secondary)]">{s.geboekt > 0 ? euro(s.geboekt) : '—'}</td>
-        <td className="px-3 py-2 text-right tabular-nums text-[var(--text-tertiary)]">
-          {Math.abs(s.verschil) > 0.5 ? euro(s.verschil) : '—'}
+        <td className="px-4 py-2 text-[var(--text-primary)]">
+          <button
+            onClick={heeftRegels ? onToggle : undefined}
+            className={`inline-flex items-center gap-1 ${heeftRegels ? 'hover:text-[var(--accent)]' : 'cursor-default'}`}
+            title={heeftRegels ? `${regels.length} geboekte regel(s) tonen` : undefined}
+          >
+            {heeftRegels && (expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />)}
+            <span className={heeftRegels ? '' : 'pl-[18px]'}>− {s.label}</span>
+            {heeftRegels && <span className="text-[10px] text-[var(--text-tertiary)]">({regels.length})</span>}
+          </button>
         </td>
+        {s.berekend ? (
+          <>
+            <td className="px-3 py-2 text-right tabular-nums text-[var(--text-tertiary)]">—</td>
+            <td className="px-3 py-2 text-right tabular-nums text-[var(--text-tertiary)]">
+              {s.geboekt > 0 ? <span title="Staat wel in Exact (bv. voorschot), maar telt niet dubbel">({euro(s.geboekt)})</span> : '—'}
+            </td>
+          </>
+        ) : (
+          <>
+            <td className="px-3 py-2 text-right tabular-nums text-[var(--text-secondary)]">{euro(s.begroot)}</td>
+            <td className="px-3 py-2 text-right tabular-nums text-[var(--text-secondary)]">{s.geboekt > 0 ? euro(s.geboekt) : '—'}</td>
+          </>
+        )}
+        <td className="px-3 py-2 text-right tabular-nums text-[var(--text-primary)]">{euro(s.gebruikt)}</td>
         <td className="px-3 py-2">
           {meta.label && (
-            <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset ${meta.cls}`}>
+            <span
+              title={meta.uitleg}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-md ring-1 ring-inset cursor-help ${meta.cls}`}
+            >
               {meta.label}
+              {meta.uitleg && <Info className="w-3 h-3 opacity-60" />}
             </span>
           )}
           {isGap && (
             <button
               onClick={onEdit}
-              className="ml-2 text-xs text-[var(--accent)] hover:underline"
+              className={`ml-2 text-xs whitespace-nowrap ${
+                materieel ? 'text-[var(--accent)] hover:underline font-medium' : 'text-[var(--text-tertiary)] hover:underline'
+              }`}
             >
-              {editing ? 'sluiten' : 'verklaar'}
+              {editing ? 'sluiten' : 'toelichten'}
             </button>
           )}
           {s.notitie && !editing && (
@@ -340,6 +442,25 @@ function StroomRow({
           )}
         </td>
       </tr>
+      {expanded && heeftRegels && (
+        <tr className="bg-[var(--bg-hover)]/40">
+          <td colSpan={5} className="px-4 py-2">
+            <table className="w-full text-xs ml-4">
+              <tbody>
+                {regels.map((r) => (
+                  <RegelActieRij
+                    key={r.exact_ref}
+                    r={r}
+                    titels={titels}
+                    eigenReceptId={eigenReceptId}
+                    onChanged={onRegelsChanged}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      )}
       {editing && (
         <tr className="bg-[var(--bg-hover)]">
           <td colSpan={5} className="px-4 py-3">
@@ -351,18 +472,80 @@ function StroomRow({
   );
 }
 
+function RegelActieRij({
+  r,
+  titels,
+  eigenReceptId,
+  onChanged,
+}: {
+  r: GeboekteRegel;
+  titels: TitelKeuze[];
+  eigenReceptId: string | null;
+  onChanged: () => void;
+}) {
+  const [kies, setKies] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const doe = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    try { await fn(); onChanged(); } finally { setBusy(false); setKies(false); }
+  };
+
+  return (
+    <tr className="text-[var(--text-tertiary)]">
+      <td className="py-1 pr-3 tabular-nums whitespace-nowrap">{r.datum}</td>
+      <td className="py-1 pr-3 text-[var(--text-secondary)]">{r.relatie || '—'}</td>
+      <td className="py-1 pr-3 hidden sm:table-cell">{r.grootboek}</td>
+      <td className="py-1 pr-3 text-right tabular-nums text-[var(--text-primary)]">{euro(r.bedrag)}</td>
+      <td className="py-1 text-right whitespace-nowrap">
+        {kies ? (
+          <TitelSelect
+            titels={titels}
+            placeholder="Verplaats naar…"
+            exclude={eigenReceptId}
+            disabled={busy}
+            onKies={(id) => doe(() => wijsToe(r.exact_ref, id))}
+            onBlur={() => setKies(false)}
+            className="max-w-[180px]"
+          />
+        ) : (
+          <>
+            <button
+              onClick={() => setKies(true)}
+              disabled={busy}
+              className="text-[11px] text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:underline mr-2"
+              title="Deze regel bij een andere titel onderbrengen"
+            >
+              andere titel
+            </button>
+            <button
+              onClick={() => doe(() => ontkoppel(r.exact_ref))}
+              disabled={busy}
+              className="text-[11px] text-[var(--text-tertiary)] hover:text-[var(--accent)] hover:underline"
+              title="Van deze titel afhalen — terug naar 'te beoordelen' in de Exact-verantwoording"
+            >
+              ontkoppel
+            </button>
+          </>
+        )}
+      </td>
+    </tr>
+  );
+}
+
 function VerklaarEditor({ s, onSave }: { s: Stroom; onSave: (status: string, notitie: string) => void }) {
   const [notitie, setNotitie] = useState(s.notitie || '');
   const keuzes = [
-    { key: 'verwacht_nog', label: 'Komt nog' },
-    { key: 'niet_gemaakt', label: 'Niet gemaakt' },
+    { key: 'verwacht_nog', label: 'Boeking komt nog' },
+    { key: 'niet_gemaakt', label: 'Kosten niet gemaakt' },
     { key: 'verkeerd_geboekt', label: 'Stond elders geboekt' },
-    { key: '', label: 'Wis verklaring' },
+    { key: '', label: 'Wis toelichting' },
   ];
   return (
     <div className="space-y-2">
       <div className="text-xs text-[var(--text-secondary)]">
-        Verschil van {euro(s.verschil)} op <strong>{s.label}</strong> verklaren:
+        Op <strong>{s.label}</strong> is {euro(s.begroot)} begroot maar {s.geboekt > 0 ? `pas ${euro(s.geboekt)}` : 'nog niets'} in
+        Exact geboekt ({euro(Math.max(s.verschil, 0))} open). Hoe zit dat?
       </div>
       <div className="flex flex-wrap gap-1.5">
         {keuzes.map((k) => (
@@ -382,22 +565,9 @@ function VerklaarEditor({ s, onSave }: { s: Stroom; onSave: (status: string, not
       <input
         value={notitie}
         onChange={(e) => setNotitie(e.target.value)}
-        placeholder="Notitie (bv. waarom niet gemaakt) — opgeslagen bij je keuze"
+        placeholder="Notitie (bv. welke boekingen je nog verwacht) — opgeslagen bij je keuze"
         className="w-full text-sm border border-[var(--border)] rounded-lg px-3 py-1.5 bg-[var(--bg-secondary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/30"
       />
-    </div>
-  );
-}
-
-function Card({ label, value, sub, extra }: { label: string; value: string; sub?: string; extra?: React.ReactNode }) {
-  return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-3">
-      <div className="text-xs text-[var(--text-tertiary)] mb-1">{label}</div>
-      <div className="flex items-center gap-2">
-        <span className="text-lg font-semibold text-[var(--text-primary)] tabular-nums">{value}</span>
-        {extra}
-      </div>
-      {sub && <div className="text-xs text-[var(--text-tertiary)] mt-0.5">{sub}</div>}
     </div>
   );
 }
@@ -408,13 +578,14 @@ function MargeBalk({ marge, streef, ondergrens }: { marge: number; streef: numbe
   const barColor = marge >= streef ? 'bg-emerald-500' : marge >= ondergrens ? 'bg-amber-500' : 'bg-red-500';
   return (
     <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
-      <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] mb-2">
-        <span>Brutomarge</span>
-        <span>{pct(marge)}</span>
+      <div className="flex items-center justify-between text-xs text-[var(--text-tertiary)] mb-4">
+        <span>Marge na winstdeling</span>
+        <span className="font-medium text-[var(--text-primary)]">{pct(marge)}</span>
       </div>
       <div className="relative h-3 rounded-full bg-[var(--bg-hover)]">
         <div className={`absolute inset-y-0 left-0 rounded-full ${barColor}`} style={{ width: x(marge) }} />
-        <Marker pos={x(ondergrens)} label={`ondergrens ${pct(ondergrens)}`} />
+        {/* labels om-en-om (ondergrens onder, streef boven) zodat ze nooit overlappen */}
+        <Marker pos={x(ondergrens)} label={`ondergrens ${pct(ondergrens)}`} below />
         <Marker pos={x(streef)} label={`streef ${pct(streef)}`} strong />
       </div>
       <div className="h-5" />
@@ -422,11 +593,17 @@ function MargeBalk({ marge, streef, ondergrens }: { marge: number; streef: numbe
   );
 }
 
-function Marker({ pos, label, strong }: { pos: string; label: string; strong?: boolean }) {
+function Marker({ pos, label, strong, below }: { pos: string; label: string; strong?: boolean; below?: boolean }) {
   return (
     <div className="absolute top-0 bottom-0" style={{ left: pos }}>
       <div className={`w-px h-full ${strong ? 'bg-[var(--text-secondary)]' : 'bg-[var(--text-tertiary)]'}`} />
-      <div className="absolute top-3.5 -translate-x-1/2 whitespace-nowrap text-[10px] text-[var(--text-tertiary)]">{label}</div>
+      <div
+        className={`absolute -translate-x-1/2 whitespace-nowrap text-[10px] text-[var(--text-tertiary)] ${
+          below ? 'top-3.5' : '-top-4'
+        }`}
+      >
+        {label}
+      </div>
     </div>
   );
 }

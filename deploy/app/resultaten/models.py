@@ -100,8 +100,34 @@ class KostenGeboekt(db.Model):
     match_bron = Column(String(10), default="")       # regel | llm | mens
     match_confidence = Column(Numeric(4, 3))          # 0..1, alleen bij llm
 
+    # Dispositie van een niet aan een titel gekoppelde regel (lege ISBN):
+    # "" = nog te beoordelen; "verdeeld" = overige verkoopkosten (naar rato van
+    # omzet over titels verdeeld); "genegeerd" = telt nergens mee (bv. een
+    # overlegkost). Regels mét ISBN horen bij die titel — dispositie irrelevant.
+    dispositie = Column(String(12), default="")
+
     import_batch = Column(String(40), default="")
     imported_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DispositieRegel(db.Model):
+    """Onthouden dispositie per leverancier/relatie → geldt ook na her-import.
+
+    Zet je "LibrisLBZ = verdeeld" of "Parnassia = genegeerd" één keer, dan
+    onthoudt deze tabel dat en past het toe op alle (ook toekomstige) regels van
+    die relatie. Spiegelt ``res_mapping`` maar dan voor de dispositie i.p.v. de
+    calculatie-post.
+    """
+
+    __tablename__ = "res_dispositie_regel"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    relatie = Column(Text, index=True)              # genormaliseerd (lower/strip)
+    dispositie = Column(String(12), default="")     # verdeeld | genegeerd
+    door = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (UniqueConstraint("relatie", name="uq_res_dispositie_regel"),)
 
 
 class KwartaalAfsluiting(db.Model):

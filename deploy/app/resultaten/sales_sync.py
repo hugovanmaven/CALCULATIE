@@ -98,21 +98,49 @@ def _periode_query(periode: str | None):
 
 
 def beschikbare_periodes() -> list[str]:
-    """Periodes met verkoop, nieuw→oud: per jaar het jaar + de kwartalen."""
-    paren = {(r.jaar, next((k for k, wk in KWARTAAL_MARKER.items() if wk == r.weeknummer), 1))
-             for r in SalesSnapshot.query.all() if r.jaar}
-    jaren = sorted({j for j, _ in paren}, reverse=True)
+    """Periodes nieuw→oud: per jaar met verkoop het jaartotaal + álle 4 kwartalen.
+
+    We tonen alle kwartalen (ook lege), zodat Q3 niet 'ontbreekt' als er toevallig
+    nog geen verkoop op staat — een leeg kwartaal is een geldig antwoord ('nog
+    niets verkocht'), geen gat in de keuzelijst.
+    """
+    rows = SalesSnapshot.query.with_entities(SalesSnapshot.jaar).distinct().all()
+    jaren = sorted({j for (j,) in rows if j}, reverse=True)
     uit = []
     for j in jaren:
         uit.append(str(j))
-        for kw in sorted({k for jj, k in paren if jj == j}, reverse=True):
+        for kw in (4, 3, 2, 1):
             uit.append(f"{j}-Q{kw}")
     return uit
+
+
+def default_periode() -> str:
+    """Kwartaal om standaard te openen: het meest recente **afgesloten** kwartaal.
+
+    Valt terug op het nieuwste kwartaal met verkoop, en anders op het jaartotaal.
+    """
+    from .models import KwartaalStatus
+
+    afgesloten = [s.periode for s in KwartaalStatus.query.filter_by(afgesloten=True).all()
+                  if "-Q" in (s.periode or "")]
+    if afgesloten:
+        return sorted(afgesloten, reverse=True)[0]
+    periodes = beschikbare_periodes()
+    kwartalen = [p for p in periodes if "-Q" in p]
+    return kwartalen[0] if kwartalen else (periodes[0] if periodes else "")
 
 
 def titel_namen(periode: str | None = None) -> list[str]:
     """Alle titel(groep)-namen met verkoop in de periode (voor het overzicht)."""
     return sorted({r.titel_naam for r in _periode_query(periode).all() if r.titel_naam})
+
+
+def totale_omzet(periode: str | None = None) -> float:
+    """Totale netto-omzet over alle titels in de periode — verdeelsleutel voor
+    de overige verkoopkosten (naar rato van omzet toerekenen)."""
+    from sqlalchemy import func
+    som = _periode_query(periode).with_entities(func.sum(SalesSnapshot.omzet)).scalar()
+    return round(float(som or 0), 2)
 
 
 def titel_naam_voor_isbn(isbn: str) -> str:

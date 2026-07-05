@@ -66,8 +66,10 @@ def parse_exact_export(path):
     # bovenaan, waar 'Grootboekrekening' ook losstaand voorkomt). Daarna lezen
     # we op vaste kolomposities — het Exact-exportformaat ligt vast.
     KERN = {"Bkst.nr.", "Bedrag", "Grootboekrekening", "Kostenplaats"}
-    hdr_idx = next(i for i, r in enumerate(rows)
-                   if r and KERN <= {str(c).strip() for c in r if c is not None})
+    hdr_idx = next((i for i, r in enumerate(rows)
+                    if r and KERN <= {str(c).strip() for c in r if c is not None}), None)
+    if hdr_idx is None:
+        raise ValueError("Geen FinTransactions-header gevonden — is dit een Exact-export?")
 
     NR, BKST, DATUM, RELATIE, OMSCHR, BEDRAG, GRB, KPLAATS = 0, 1, 2, 5, 6, 10, 14, 15
 
@@ -104,19 +106,36 @@ def import_exact(path, import_batch=None):
     batch = import_batch or datetime.utcnow().strftime("exact-%Y%m%d%H%M%S")
     rows = parse_exact_export(path)
 
+    from .models import DispositieRegel
+    regels = {r.relatie: r.dispositie for r in DispositieRegel.query.all()}
+
     n_new = n_upd = 0
     for row in rows:
         rec = KostenGeboekt.query.filter_by(exact_ref=row["exact_ref"]).first()
-        if rec is None:
+        nieuw = rec is None
+        if nieuw:
             rec = KostenGeboekt(exact_ref=row["exact_ref"])
             db.session.add(rec)
             n_new += 1
         else:
             n_upd += 1
+        # Handmatige titel-koppeling (herkoppel) niet overschrijven bij her-import:
+        # de export heeft geen kostenplaats voor die regel, maar de mens wél.
+        behoud_isbn = (not nieuw and rec.match_bron == "mens" and rec.isbn and not row.get("isbn"))
         for k, v in row.items():
-            if k != "exact_ref":
-                setattr(rec, k, v)
-        rec.match_bron = "regel"          # deterministisch via grootboek
+            if k == "exact_ref":
+                continue
+            if k == "isbn" and behoud_isbn:
+                continue
+            setattr(rec, k, v)
+        if not behoud_isbn:
+            rec.match_bron = "regel"      # deterministisch via grootboek
+        # Onthouden dispositie (per relatie) toepassen op regels zonder titel —
+        # maar nooit over een handmatige per-regel-keuze heen.
+        if not rec.isbn and not rec.dispositie:
+            onthouden = regels.get((rec.relatie or "").strip().lower())
+            if onthouden:
+                rec.dispositie = onthouden
         rec.import_batch = batch
         rec.imported_at = datetime.utcnow()
 
