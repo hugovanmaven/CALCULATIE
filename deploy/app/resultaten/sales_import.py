@@ -20,9 +20,14 @@ Herkende kolommen (case-insensitief, eerste match telt):
 """
 
 import csv
-import io
+import re
 
 from . import sales_sync
+
+# Geldige ISBN begint met 12+ cijfers; een suffix (bv. CB's "-A"-editievariant)
+# mag blijven staan. Zo verliezen we geen verkoop op zulke edities, en kop-/
+# totaalrijen (geen leidende cijfers) vallen er vanzelf uit.
+ISBN_RE = re.compile(r"\d{12,}")
 
 
 ALIASSEN = {
@@ -128,7 +133,7 @@ def import_sales(path: str, filename: str, *, jaar: int | None = None,
     out = []
     for r in rijen[hdr_idx + 1:]:
         isbn = str(cel(r, "isbn") or "").strip()
-        if not isbn.isdigit() or len(isbn) < 12:      # kop/totaal/lege rij overslaan
+        if not ISBN_RE.match(isbn):                   # kop/totaal/lege rij overslaan
             continue
         jr = _parse_jaar(cel(r, "jaar"), jaar)
         kw = _parse_kwartaal(cel(r, "kwartaal"), kwartaal)
