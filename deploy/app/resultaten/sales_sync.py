@@ -21,10 +21,13 @@ from ..db import db
 
 
 # bron (sales-dashboard) → engine-kanaal. calculatie.py rekent met retail/webshop/b2b.
+# Al-genormaliseerde waarden (retail/webshop/b2b) worden ook geaccepteerd, zodat
+# een export die zelf al kanalen benoemt bij een handmatige import net zo werkt.
 BRON_KANAAL = {
     "centraal boekhuis": "retail",
     "shopify": "webshop",
     "moneybird b2b": "b2b",
+    "retail": "retail", "webshop": "webshop", "b2b": "b2b",
 }
 
 # kwartaal → marker-weeknummer (startweek van het kwartaal)
@@ -32,7 +35,7 @@ KWARTAAL_MARKER = {1: 1, 2: 14, 3: 27, 4: 40}
 
 
 def normaliseer_kanaal(bron: str) -> str:
-    """'Centraal Boekhuis' → 'retail', enz. Onbekend → 'overig'."""
+    """'Centraal Boekhuis' → 'retail', 'retail' → 'retail'. Onbekend → 'overig'."""
     return BRON_KANAAL.get((bron or "").strip().lower(), "overig")
 
 
@@ -97,37 +100,68 @@ def _periode_query(periode: str | None):
     return q
 
 
+def _jaren_met_data() -> set[int]:
+    """Jaren waarvoor er íets is — verkoop (sales) óf geboekte Exact-kosten.
+
+    Zo verschijnen er al kwartalen zodra je de Exact-export hebt geüpload, ook
+    als de sales-snapshot nog leeg is."""
+    from .models import KostenGeboekt
+    jaren = {j for (j,) in SalesSnapshot.query.with_entities(SalesSnapshot.jaar).distinct().all() if j}
+    for (p,) in KostenGeboekt.query.with_entities(KostenGeboekt.periode).distinct().all():
+        if p and str(p)[:4].isdigit():
+            jaren.add(int(str(p)[:4]))
+    return jaren
+
+
 def beschikbare_periodes() -> list[str]:
-    """Periodes nieuw→oud: per jaar met verkoop het jaartotaal + álle 4 kwartalen.
+    """Periodes nieuw→oud: per jaar met data het jaartotaal + álle 4 kwartalen.
 
     We tonen alle kwartalen (ook lege), zodat Q3 niet 'ontbreekt' als er toevallig
     nog geen verkoop op staat — een leeg kwartaal is een geldig antwoord ('nog
     niets verkocht'), geen gat in de keuzelijst.
     """
-    rows = SalesSnapshot.query.with_entities(SalesSnapshot.jaar).distinct().all()
-    jaren = sorted({j for (j,) in rows if j}, reverse=True)
     uit = []
-    for j in jaren:
+    for j in sorted(_jaren_met_data(), reverse=True):
         uit.append(str(j))
         for kw in (4, 3, 2, 1):
             uit.append(f"{j}-Q{kw}")
     return uit
 
 
-def default_periode() -> str:
-    """Kwartaal om standaard te openen: het meest recente **afgesloten** kwartaal.
+def _kwartalen_met_data() -> set[str]:
+    """Kwartalen ('2026-Q2') met verkoop óf geboekte kosten."""
+    from .models import KostenGeboekt
+    uit = {str(p) for (p,) in KostenGeboekt.query.with_entities(KostenGeboekt.periode).distinct().all()
+           if p and "-Q" in str(p)}
+    for jaar, wk in SalesSnapshot.query.with_entities(SalesSnapshot.jaar, SalesSnapshot.weeknummer).distinct().all():
+        kw = next((k for k, m in KWARTAAL_MARKER.items() if m == wk), None)
+        if jaar and kw:
+            uit.add(f"{jaar}-Q{kw}")
+    return uit
 
-    Valt terug op het nieuwste kwartaal met verkoop, en anders op het jaartotaal.
-    """
+
+def default_periode() -> str:
+    """Kwartaal om standaard te openen: het meest recente **afgesloten** kwartaal,
+    anders het nieuwste kwartaal met data, anders het nieuwste jaartotaal."""
     from .models import KwartaalStatus
 
     afgesloten = [s.periode for s in KwartaalStatus.query.filter_by(afgesloten=True).all()
                   if "-Q" in (s.periode or "")]
     if afgesloten:
         return sorted(afgesloten, reverse=True)[0]
+    met_data = _kwartalen_met_data()
+    if met_data:
+        return sorted(met_data, reverse=True)[0]
     periodes = beschikbare_periodes()
-    kwartalen = [p for p in periodes if "-Q" in p]
-    return kwartalen[0] if kwartalen else (periodes[0] if periodes else "")
+    return periodes[0] if periodes else ""
+
+
+def laatste_sync() -> str | None:
+    """Tijdstip (ISO) van de meest recente sales-snapshot, of None als er nog
+    geen sales geladen is."""
+    from sqlalchemy import func
+    ts = SalesSnapshot.query.with_entities(func.max(SalesSnapshot.snapshot_at)).scalar()
+    return ts.isoformat() if ts else None
 
 
 def titel_namen(periode: str | None = None) -> list[str]:
