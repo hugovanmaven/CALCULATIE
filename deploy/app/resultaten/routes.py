@@ -30,10 +30,41 @@ def ping():
 
 @bp.get("/periodes")
 def periodes():
-    """Beschikbare periodes (jaar + alle kwartalen) + het kwartaal om standaard
-    te openen (het meest recente afgesloten kwartaal)."""
+    """Beschikbare periodes (jaar + alle kwartalen, uit sales én Exact-kosten) +
+    het kwartaal om standaard te openen + tijdstip van de laatste sales-sync."""
     return jsonify({"periodes": sales_sync.beschikbare_periodes(),
-                    "default": sales_sync.default_periode()})
+                    "default": sales_sync.default_periode(),
+                    "laatste_sync": sales_sync.laatste_sync()})
+
+
+@bp.post("/import/sales")
+def import_sales_route():
+    """Upload een sales-export (CSV of .xlsx) → res_sales_snapshot.
+
+    Optioneel form-veld ``jaar`` + ``kwartaal`` als het bestand die niet bevat
+    (één kwartaal per upload). Idempotent, dus opnieuw uploaden is veilig.
+    """
+    from .sales_import import import_sales
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "geen bestand"}), 400
+    jaar = request.form.get("jaar")
+    kwartaal = request.form.get("kwartaal")
+    suffix = ".xlsx" if (f.filename or "").lower().endswith((".xlsx", ".xlsm")) else ".csv"
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    os.close(fd)
+    try:
+        f.save(path)
+        res = import_sales(path, f.filename or "",
+                           jaar=int(jaar) if jaar else None,
+                           kwartaal=int(kwartaal) if kwartaal else None)
+    except ValueError as e:                 # herkenbare parse-/invoerfout
+        return jsonify({"error": str(e)}), 400
+    except Exception:                       # onleesbaar bestand → nette 400
+        return jsonify({"error": "Kon het bestand niet lezen — is dit een geldige CSV/.xlsx?"}), 400
+    finally:
+        os.unlink(path)
+    return jsonify(res)
 
 
 @bp.get("/titels")

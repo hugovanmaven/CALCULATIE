@@ -288,7 +288,21 @@ export const STROOM_STATUS: Record<string, { label: string; cls: string; uitleg:
   leeg: { label: '', cls: '', uitleg: '' },
 };
 
-export const getPeriodes = () => get<{ periodes: string[]; default: string }>('/periodes');
+export const getPeriodes = () =>
+  get<{ periodes: string[]; default: string; laatste_sync: string | null }>('/periodes');
+
+export async function importSales(file: File, jaar?: string, kwartaal?: string): Promise<{ rijen: number; nieuw: number; bijgewerkt: number }> {
+  const fd = new FormData();
+  fd.append('file', file);
+  if (jaar) fd.append('jaar', jaar);
+  if (kwartaal) fd.append('kwartaal', kwartaal);
+  const res = await fetch(BASE + '/import/sales', { method: 'POST', body: fd });
+  if (!res.ok) {
+    const msg = await res.json().catch(() => null);
+    throw new Error(msg?.error || `Import ${res.status}`);
+  }
+  return res.json();
+}
 export const getOverzicht = (periode: string) => get<Overzicht>(`/overzicht?periode=${encodeURIComponent(periode)}`);
 export const getTitel = (id: string, periode: string) =>
   get<TitelResultaat>(`/titel/${id}?periode=${encodeURIComponent(periode)}`);

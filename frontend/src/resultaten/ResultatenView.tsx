@@ -19,6 +19,7 @@ export default function ResultatenView({ initialTitelId = null }: { initialTitel
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [laatsteSync, setLaatsteSync] = useState<string | null>(null);
 
   // Vanuit de calculatie op een titel hierheen → open direct diezelfde titel.
   useEffect(() => {
@@ -30,12 +31,14 @@ export default function ResultatenView({ initialTitelId = null }: { initialTitel
 
   useEffect(() => {
     getPeriodes()
-      .then(({ periodes: ps, default: def }) => {
+      .then(({ periodes: ps, default: def, laatste_sync }) => {
         setPeriodes(ps);
+        setLaatsteSync(laatste_sync);
         setPeriode((cur) => cur || def || ps[0] || '2026');
       })
       .catch(() => setPeriode((cur) => cur || '2026'));
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   useEffect(() => {
     if (!periode) return;
@@ -153,7 +156,11 @@ export default function ResultatenView({ initialTitelId = null }: { initialTitel
             onGaNaarExact={() => setTab('exact')}
             onChanged={() => setReloadKey((k) => k + 1)}
           />
-          <ImportPanel onImported={() => setReloadKey((k) => k + 1)} />
+          <ImportPanel
+            periode={periode}
+            laatsteSync={laatsteSync}
+            onImported={() => setReloadKey((k) => k + 1)}
+          />
         </div>
       ) : null}
     </div>
