@@ -11,6 +11,7 @@ from flask import Blueprint, request, jsonify, Response, abort
 
 from ..calculatie import (
     TitelInput, StaffelTrede, KostenPost, DrukConfig, ExtraDerde,
+    MarketingOnderdeel, bereken_marketing_budget,
     bereken_titel, bereken_gemiddeld_staffel_percentage,
     KanaalResultaat, DrukResultaat, CalculatieResultaat,
 )
@@ -35,6 +36,21 @@ def _kostenposten_list(items: list[dict]) -> list[KostenPost]:
             bedrag=kp.get("bedrag", 0.0),
         )
         for kp in items
+    ]
+
+
+def _marketing_onderdelen_list(items: list[dict]) -> list[MarketingOnderdeel]:
+    return [
+        MarketingOnderdeel(
+            id=o.get("id", ""),
+            naam=o.get("naam", ""),
+            groep=o.get("groep", "offline_marketing"),
+            volgorde=o.get("volgorde", i),
+            toegewezen=o.get("toegewezen", 0.0),
+            committed=o.get("committed", 0.0),
+            besteed=o.get("besteed", 0.0),
+        )
+        for i, o in enumerate(items)
     ]
 
 
@@ -113,6 +129,8 @@ def dict_to_titel_input(d: dict) -> TitelInput:
         partner_winstdeling_pct=d.get("partner_winstdeling_pct", 0.5),
         # Overig
         overige_kosten_pct=d.get("overige_kosten_pct", 0.0),
+        marketing_budget_pct=d.get("marketing_budget_pct", 0.08),
+        marketing_onderdelen=_marketing_onderdelen_list(d.get("marketing_onderdelen", [])),
     )
 
 
@@ -162,6 +180,17 @@ def run_calculation(data: dict) -> dict:
 
     res = bereken_titel(t)
 
+    marketing_budget = bereken_marketing_budget(t, verd_ws, verd_rt, verd_b2b)
+    marketing_marge_totaal = sum(o.marge_kost() for o in (t.marketing_onderdelen or []))
+    # CAC-€-equivalent (informatief, telt NIET in de kolomtotalen):
+    # cac eerste druk × verwachte webshop-verkopen van de eerste oplage.
+    if t.drukken:
+        eerste = sorted(t.drukken, key=lambda d: d.druknummer)[0]
+        eerste_cac = eerste.cac_per_ex if eerste.cac_per_ex else t.cac_per_ex
+        marketing_cac_euro = eerste_cac * verd_ws * eerste.oplage
+    else:
+        marketing_cac_euro = 0.0
+
     drukken_out = [
         {
             **druk_to_dict(d, verd_ws, verd_rt, verd_b2b),
@@ -182,6 +211,9 @@ def run_calculation(data: dict) -> dict:
         "drukken": drukken_out,
         "gewogen_marge_pct_totaal": marge_totaal,
         "totaal_oplage": sum(d["oplage"] for d in drukken_out),
+        "marketing_budget": marketing_budget,
+        "marketing_marge_totaal": marketing_marge_totaal,
+        "marketing_cac_euro": marketing_cac_euro,
     }
 
 
