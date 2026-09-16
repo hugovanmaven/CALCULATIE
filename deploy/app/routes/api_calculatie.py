@@ -1211,6 +1211,52 @@ def export_excel():
         ws_sheet[f"A{r}"].font = Font(size=8, italic=True, color="FF999999")
         r += 1
 
+    # ── MARKETING ──
+    ws_sheet.merge_cells(f"A{r}:F{r}")
+    h2(ws_sheet[f"A{r}"], "MARKETING")
+    r += 1
+
+    marketing_budget = calc.get("marketing_budget", 0.0)
+    label(ws_sheet[f"A{r}"], "Berekend marketingbudget", bold=True)
+    val(ws_sheet[f"B{r}"], marketing_budget, "€ #,##0", bold=True)
+    r += 1
+
+    marketing_onderdelen = ti.get("marketing_onderdelen") or []
+    if marketing_onderdelen:
+        for col, hdr in enumerate(["Onderdeel", "Toegewezen", "Committed", "Besteed"], 1):
+            th(ws_sheet.cell(r, col), hdr)
+            ws_sheet.cell(r, col).alignment = Alignment(horizontal="left" if col == 1 else "right")
+        r += 1
+
+        tot_toegewezen = tot_committed = tot_besteed = 0.0
+        for o in sorted(marketing_onderdelen, key=lambda x: x.get("volgorde", 0)):
+            o_toegewezen = o.get("toegewezen", 0) or 0
+            o_committed = o.get("committed", 0) or 0
+            o_besteed = o.get("besteed", 0) or 0
+            tot_toegewezen += o_toegewezen
+            tot_committed += o_committed
+            tot_besteed += o_besteed
+            label(ws_sheet[f"A{r}"], f"  {o.get('naam') or o.get('id', '?')}")
+            val(ws_sheet[f"B{r}"], o_toegewezen, "€ #,##0")
+            val(ws_sheet[f"C{r}"], o_committed, "€ #,##0")
+            val(ws_sheet[f"D{r}"], o_besteed, "€ #,##0")
+            r += 1
+
+        label(ws_sheet[f"A{r}"], "Totaal", bold=True)
+        val(ws_sheet[f"B{r}"], tot_toegewezen, "€ #,##0", bold=True)
+        val(ws_sheet[f"C{r}"], tot_committed, "€ #,##0", bold=True)
+        val(ws_sheet[f"D{r}"], tot_besteed, "€ #,##0", bold=True)
+        r += 1
+
+        nog_over = marketing_budget - tot_toegewezen
+        label(ws_sheet[f"A{r}"], "Nog over (t.o.v. toegewezen)")
+        val(
+            ws_sheet[f"B{r}"], nog_over, "€ #,##0",
+            color="FFD32F2F" if nog_over < 0 else None,
+        )
+        r += 1
+    r += 1
+
     # ──────────────────────────────────────────────────────────────────
     #  TAB 2 — RESULTAAT (outputs)
     # ──────────────────────────────────────────────────────────────────
