@@ -10,6 +10,16 @@ export interface KostenPost {
   bedrag: number;
 }
 
+export interface MarketingOnderdeel {
+  id: string;
+  naam: string;
+  groep: 'offline_marketing' | 'online_marketing';
+  volgorde: number;
+  toegewezen: number;
+  committed: number;
+  besteed: number;
+}
+
 export interface ExtraDerde {
   id: string;
   naam: string;
@@ -79,6 +89,9 @@ export interface TitelInput {
   overige_kosten_items: OverigeKostenItem[];
   // Extra derden
   extra_derden: ExtraDerde[];
+  // Marketing
+  marketing_budget_pct: number;
+  marketing_onderdelen: MarketingOnderdeel[];
 }
 
 export interface CalculateRequest {
@@ -134,6 +147,9 @@ export interface CalculateResponse {
   drukken: DrukResultaat[];
   gewogen_marge_pct_totaal: number;
   totaal_oplage: number;
+  marketing_budget: number;
+  marketing_marge_totaal: number;
+  marketing_cac_euro: number;
 }
 
 export interface SensitivityRow {
@@ -245,15 +261,16 @@ export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [
   { id: 'vertaling', naam: 'Vertaling', categorie: 'productie', bedrag: 0 },
   { id: 'ebook_productie', naam: 'E-book productie', categorie: 'productie', bedrag: 0 },
   { id: 'audiobook_productie', naam: 'Audiobook productie', categorie: 'productie', bedrag: 0 },
-  // Offline marketing
-  { id: 'evenement', naam: 'Evenement', categorie: 'offline_marketing', bedrag: 0 },
-  { id: 'marketingmateriaal', naam: 'Marketingmateriaal', categorie: 'offline_marketing', bedrag: 0 },
-  { id: 'offline_campagne', naam: 'Offline campagne', categorie: 'offline_marketing', bedrag: 0 },
-  { id: 'boekhandelsmateriaal', naam: 'Boekhandelsmateriaal', categorie: 'offline_marketing', bedrag: 0 },
-  // Online marketing
-  { id: 'productfotografie', naam: 'Productfotografie', categorie: 'online_marketing', bedrag: 0 },
-  { id: 'productie_ads', naam: 'Productie ads', categorie: 'online_marketing', bedrag: 0 },
-  { id: 'software_kosten', naam: 'Software kosten', categorie: 'online_marketing', bedrag: 0 },
+];
+
+export const DEFAULT_MARKETING_ONDERDELEN: MarketingOnderdeel[] = [
+  { id: 'evenement', naam: 'Evenement', groep: 'offline_marketing', volgorde: 0, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'marketingmateriaal', naam: 'Marketingmateriaal', groep: 'offline_marketing', volgorde: 1, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'offline_campagne', naam: 'Offline campagne', groep: 'offline_marketing', volgorde: 2, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'boekhandelsmateriaal', naam: 'Boekhandelsmateriaal', groep: 'offline_marketing', volgorde: 3, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'productfotografie', naam: 'Productfotografie', groep: 'online_marketing', volgorde: 4, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'productie_ads', naam: 'Productie ads', groep: 'online_marketing', volgorde: 5, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'software_kosten', naam: 'Software kosten', groep: 'online_marketing', volgorde: 6, toegewezen: 0, committed: 0, besteed: 0 },
 ];
 
 export const DEFAULT_DRUK: DrukConfig = {
@@ -309,4 +326,7 @@ export const DEFAULT_TITEL_INPUT: TitelInput = {
   overige_kosten_items: [],
   // Extra derden
   extra_derden: [],
+  // Marketing
+  marketing_budget_pct: 0.08,
+  marketing_onderdelen: [...DEFAULT_MARKETING_ONDERDELEN],
 };
