@@ -804,3 +804,26 @@ class TestSimulatieStaffel:
         # Volgt de staffel (~€53,3k), niet het platte 1e-druk-tarief (~€41,3k)
         assert roy_sim == pytest.approx(roy_correct, abs=2.0)
         assert roy_sim > roy_flat + 5_000
+
+
+# ─────────────────────────────────────────────────────────────────────
+#  L. MARKETING-BUDGETPLANNER (engine-laag)
+# ─────────────────────────────────────────────────────────────────────
+
+from app.calculatie import MarketingOnderdeel
+
+
+class TestMarketingOnderdeel:
+    def test_marge_kost_neemt_maximum(self):
+        o = MarketingOnderdeel(id="x", naam="X", groep="offline_marketing",
+                               toegewezen=1000, committed=500, besteed=200)
+        assert o.marge_kost() == pytest.approx(1000, abs=TOL)
+
+    def test_marge_kost_committed_groter(self):
+        o = MarketingOnderdeel(id="x", naam="X", toegewezen=300, committed=900, besteed=100)
+        assert o.marge_kost() == pytest.approx(900, abs=TOL)
+
+    def test_titelinput_heeft_marketing_defaults(self):
+        t = _titel()
+        assert t.marketing_budget_pct == pytest.approx(0.08, abs=TOL)
+        assert t.marketing_onderdelen == []

@@ -34,6 +34,26 @@ class KostenPost:
 
 
 @dataclass
+class MarketingOnderdeel:
+    """Eén onderdeel in de marketing-budgetplanner (titel-niveau).
+
+    Drie fases van het geld: toegewezen (gepland) → committed (toegezegd/
+    in progress) → besteed (factuur betaald). In de marge telt het maximum
+    van de drie mee: het plan is de ondergrens, overschrijdingen tellen extra.
+    """
+    id: str = ""
+    naam: str = ""
+    groep: str = "offline_marketing"   # "offline_marketing" | "online_marketing"
+    volgorde: int = 0
+    toegewezen: float = 0.0
+    committed: float = 0.0
+    besteed: float = 0.0
+
+    def marge_kost(self) -> float:
+        return max(self.toegewezen, self.committed, self.besteed)
+
+
+@dataclass
 class DrukConfig:
     """Configuratie voor één druk."""
     druknummer: int
@@ -127,6 +147,10 @@ class TitelInput:
 
     # ── Overige kosten (% van netto omzet) ──
     overige_kosten_pct: float = 0.0
+
+    # ── Marketing-budgetplanner (titel-niveau) ──
+    marketing_budget_pct: float = 0.08
+    marketing_onderdelen: list["MarketingOnderdeel"] = field(default_factory=list)
 
 
 # ──────────────────────────────────────────────────────────────────────
