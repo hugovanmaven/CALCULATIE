@@ -82,12 +82,14 @@ def test_titel_detail_toont_marketingbudget_en_onderdelen(client):
     titel_input = {
         "titel": "Testtitel met marketing",
         "verkoopprijs_incl_btw": 20.0,
-        "drukken": [{"druknummer": 1, "oplage": 3000, "drukkosten_per_ex": 1.2, "kostenposten": []}],
-        "marketing_budget_pct": 0.08,
-        "marketing_onderdelen": [
-            {"id": "a1", "naam": "Influencer campagne", "groep": "online_marketing",
-             "volgorde": 0, "toegewezen": 1500, "committed": 1200, "besteed": 900},
-        ],
+        "drukken": [{
+            "druknummer": 1, "oplage": 3000, "drukkosten_per_ex": 1.2, "kostenposten": [],
+            "marketing_budget_pct": 0.08,
+            "marketing_onderdelen": [
+                {"id": "a1", "naam": "Influencer campagne", "groep": "online_marketing",
+                 "volgorde": 0, "toegewezen": 1500, "committed": 1200, "besteed": 900},
+            ],
+        }],
     }
     result = rpc(client, "tools/call", {"name": "titel_detail", "arguments": {"titel_input": titel_input}}).get_json()["result"]
     assert not result.get("isError")

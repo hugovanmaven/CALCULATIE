@@ -158,26 +158,33 @@ def _format_calc(titel_label: str, calc: dict) -> str:
 
 def _format_marketing(ti: dict, calc: dict) -> str:
     """Berekend marketingbudget + per onderdeel de drie fases (toegewezen/
-    committed/besteed), zoals de budgetplanner in de app.
+    committed/besteed), PER DRUK — zoals de budgetplanner in de app.
     """
-    budget = calc.get("marketing_budget", 0.0)
-    regels = ["Marketing:", f"  Berekend marketingbudget: {_eur(budget)}"]
-    onderdelen = ti.get("marketing_onderdelen") or []
-    if not onderdelen:
-        regels.append("  Geen marketing-onderdelen ingevuld.")
-        return "\n".join(regels)
-    tot_toegewezen = 0.0
-    for o in sorted(onderdelen, key=lambda x: x.get("volgorde", 0)):
-        toegewezen = o.get("toegewezen", 0) or 0
-        committed = o.get("committed", 0) or 0
-        besteed = o.get("besteed", 0) or 0
-        tot_toegewezen += toegewezen
-        regels.append(
-            f"  - {o.get('naam') or o.get('id', '?')}: toegewezen {_eur(toegewezen)},"
-            f" committed {_eur(committed)}, besteed {_eur(besteed)}"
-        )
-    nog_over = budget - tot_toegewezen
-    regels.append(f"  Nog over (t.o.v. toegewezen): {_eur(nog_over)}")
+    ti_drukken = sorted(ti.get("drukken") or [], key=lambda d: d.get("druknummer", 1))
+    calc_drukken = calc.get("drukken", [])
+    if not calc_drukken:
+        return "Marketing: geen drukken."
+
+    regels = ["Marketing (per druk):"]
+    for dk, calc_druk in zip(ti_drukken, calc_drukken):
+        budget = calc_druk.get("marketing_budget", 0.0)
+        regels.append(f"  {calc_druk.get('druk_type', 'druk')} — berekend marketingbudget: {_eur(budget)}")
+        onderdelen = dk.get("marketing_onderdelen") or []
+        if not onderdelen:
+            regels.append("    Geen marketing-onderdelen ingevuld.")
+            continue
+        tot_toegewezen = 0.0
+        for o in sorted(onderdelen, key=lambda x: x.get("volgorde", 0)):
+            toegewezen = o.get("toegewezen", 0) or 0
+            committed = o.get("committed", 0) or 0
+            besteed = o.get("besteed", 0) or 0
+            tot_toegewezen += toegewezen
+            regels.append(
+                f"    - {o.get('naam') or o.get('id', '?')}: toegewezen {_eur(toegewezen)},"
+                f" committed {_eur(committed)}, besteed {_eur(besteed)}"
+            )
+        nog_over = budget - tot_toegewezen
+        regels.append(f"    Nog over (t.o.v. toegewezen): {_eur(nog_over)}")
     return "\n".join(regels)
 
 

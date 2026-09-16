@@ -125,10 +125,9 @@ class Titel(db.Model):
     illustrator_staffel = Column(JSON, default=list)
     extra_derden = Column(JSON, default=list)
     overige_kosten_items = Column(JSON, default=list)
-
-    # ── Marketing-budgetplanner (titel-niveau) ──
-    marketing_budget_pct = Column(Numeric(8, 6), default=0.08)
-    marketing_onderdelen = Column(JSON, default=list)
+    # Marketing-budgetplanner (marketing_budget_pct/marketing_onderdelen) is
+    # verhuisd naar per-druk niveau; die velden leven nu binnen elk item van
+    # `drukken` (JSON), niet meer als losse kolom op de titel.
 
 
 class TitelHistorie(db.Model):

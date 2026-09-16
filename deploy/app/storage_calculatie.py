@@ -85,7 +85,6 @@ _SCALAR_FIELDS = [
     "illustrator_pct", "illustrator_winstdeling_pct", "illustrator_voorschot",
     "heeft_partner", "partner_naam", "partner_winstdeling_pct",
     "overige_kosten_pct",
-    "marketing_budget_pct",
 ]
 
 # JSON-velden in titel_input
@@ -97,7 +96,6 @@ _JSON_FIELDS = [
     "illustrator_staffel",
     "extra_derden",
     "overige_kosten_items",
-    "marketing_onderdelen",
 ]
 
 
@@ -113,19 +111,21 @@ DEFAULT_MARKETING_ONDERDELEN = [
 
 
 def _migrate_marketing(titel_input: dict) -> None:
-    """On-the-fly, idempotente migratie: bouw ``marketing_onderdelen`` uit de
-    oude offline/online-marketing kostenposten en strip die uit de drukken.
+    """On-the-fly, idempotente migratie, PER DRUK: bouw voor elke druk
+    ``marketing_onderdelen`` uit de offline/online-marketing kostenposten
+    van DIE druk en strip die uit de kostenposten van DIE druk.
 
-    Doet niets als ``marketing_onderdelen`` al gevuld is."""
-    if titel_input.get("marketing_onderdelen"):
-        return
-
-    bedragen: dict[str, float] = {}
-    namen: dict[str, str] = {}
-    groepen: dict[str, str] = {}
+    Idempotent per druk: een druk die al ``marketing_onderdelen`` heeft
+    gevuld, wordt overgeslagen (ook z'n kostenposten blijven dan onaangeroerd)."""
     for druk in (titel_input.get("drukken") or []):
         if not isinstance(druk, dict):
             continue
+        if druk.get("marketing_onderdelen"):
+            continue
+
+        bedragen: dict[str, float] = {}
+        namen: dict[str, str] = {}
+        groepen: dict[str, str] = {}
         overgebleven = []
         for kp in (druk.get("kostenposten") or []):
             if kp.get("categorie") in ("offline_marketing", "online_marketing"):
@@ -137,27 +137,27 @@ def _migrate_marketing(titel_input: dict) -> None:
                 overgebleven.append(kp)
         druk["kostenposten"] = overgebleven
 
-    onderdelen = []
-    seen = set()
-    for i, base in enumerate(DEFAULT_MARKETING_ONDERDELEN):
-        kid = base["id"]
-        seen.add(kid)
-        onderdelen.append({
-            "id": kid, "naam": base["naam"], "groep": base["groep"], "volgorde": i,
-            "toegewezen": bedragen.get(kid, 0.0), "committed": 0.0, "besteed": 0.0,
-        })
-    volgorde = len(onderdelen)
-    for kid, bedrag in bedragen.items():
-        if kid in seen:
-            continue
-        onderdelen.append({
-            "id": kid, "naam": namen.get(kid, kid),
-            "groep": groepen.get(kid, "offline_marketing"), "volgorde": volgorde,
-            "toegewezen": bedrag, "committed": 0.0, "besteed": 0.0,
-        })
-        volgorde += 1
+        onderdelen = []
+        seen = set()
+        for i, base in enumerate(DEFAULT_MARKETING_ONDERDELEN):
+            kid = base["id"]
+            seen.add(kid)
+            onderdelen.append({
+                "id": kid, "naam": base["naam"], "groep": base["groep"], "volgorde": i,
+                "toegewezen": bedragen.get(kid, 0.0), "committed": 0.0, "besteed": 0.0,
+            })
+        volgorde = len(onderdelen)
+        for kid, bedrag in bedragen.items():
+            if kid in seen:
+                continue
+            onderdelen.append({
+                "id": kid, "naam": namen.get(kid, kid),
+                "groep": groepen.get(kid, "offline_marketing"), "volgorde": volgorde,
+                "toegewezen": bedrag, "committed": 0.0, "besteed": 0.0,
+            })
+            volgorde += 1
 
-    titel_input["marketing_onderdelen"] = onderdelen
+        druk["marketing_onderdelen"] = onderdelen
 
 
 def _decimal_to_float(v):
@@ -575,18 +575,6 @@ def ensure_schema():
                 "ALTER TABLE titels ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
             ))
         print("[storage] schema: kolom 'version' toegevoegd aan titels")
-    if "marketing_budget_pct" not in cols:
-        with db.engine.begin() as conn:
-            conn.execute(text(
-                "ALTER TABLE titels ADD COLUMN marketing_budget_pct NUMERIC(8,6) DEFAULT 0.08"
-            ))
-        print("[storage] schema: kolom 'marketing_budget_pct' toegevoegd aan titels")
-    if "marketing_onderdelen" not in cols:
-        with db.engine.begin() as conn:
-            conn.execute(text(
-                "ALTER TABLE titels ADD COLUMN marketing_onderdelen JSON DEFAULT '[]'"
-            ))
-        print("[storage] schema: kolom 'marketing_onderdelen' toegevoegd aan titels")
 
 
 def migrate_from_json_if_needed():

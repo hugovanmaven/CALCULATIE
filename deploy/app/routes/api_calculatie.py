@@ -86,6 +86,8 @@ def _drukken_list(items: list[dict]) -> list[DrukConfig]:
             drukkosten_per_ex=d.get("drukkosten_per_ex", 1.20),
             kostenposten=_kostenposten_list(d.get("kostenposten", [])),
             cac_per_ex=d.get("cac_per_ex", 0.0),
+            marketing_budget_pct=d.get("marketing_budget_pct", 0.08),
+            marketing_onderdelen=_marketing_onderdelen_list(d.get("marketing_onderdelen", [])),
         ))
     return result
 
@@ -136,8 +138,6 @@ def dict_to_titel_input(d: dict) -> TitelInput:
         partner_winstdeling_pct=d.get("partner_winstdeling_pct", 0.5),
         # Overig
         overige_kosten_pct=d.get("overige_kosten_pct", 0.0),
-        marketing_budget_pct=d.get("marketing_budget_pct", 0.08),
-        marketing_onderdelen=_marketing_onderdelen_list(d.get("marketing_onderdelen", [])),
     )
 
 
@@ -187,25 +187,35 @@ def run_calculation(data: dict) -> dict:
 
     res = bereken_titel(t)
 
-    marketing_budget = bereken_marketing_budget(t, verd_ws, verd_rt, verd_b2b)
-    marketing_marge_totaal = sum(o.marge_kost() for o in (t.marketing_onderdelen or []))
-    # CAC-€-equivalent (informatief, telt NIET in de kolomtotalen):
-    # cac eerste druk × verwachte webshop-verkopen van de eerste oplage.
-    if t.drukken:
-        eerste = sorted(t.drukken, key=lambda d: d.druknummer)[0]
-        eerste_cac = eerste.cac_per_ex if eerste.cac_per_ex else t.cac_per_ex
-        marketing_cac_euro = eerste_cac * verd_ws * eerste.oplage
-    else:
-        marketing_cac_euro = 0.0
+    # Marketing leeft nu per druk. res.drukken is gesorteerd op druknummer
+    # (zie bereken_titel), dus zip met de zelfde sortering van t.drukken
+    # geeft de juiste DrukConfig bij elk DrukResultaat.
+    drukken_cfg_gesorteerd = sorted(t.drukken, key=lambda d: d.druknummer)
 
-    drukken_out = [
-        {
+    drukken_out = []
+    marketing_budget = 0.0
+    marketing_marge_totaal = 0.0
+    marketing_cac_euro = 0.0
+    for d, druk_cfg in zip(res.drukken, drukken_cfg_gesorteerd):
+        druk_marketing_budget = bereken_marketing_budget(t, druk_cfg, verd_ws, verd_rt, verd_b2b)
+        druk_marketing_marge_totaal = d.marketing_marge_totaal
+        # CAC-€-equivalent (informatief, telt NIET in de kolomtotalen):
+        # cac van déze druk × verwachte webshop-verkopen van díe oplage.
+        druk_cac = druk_cfg.cac_per_ex if druk_cfg.cac_per_ex else t.cac_per_ex
+        druk_marketing_cac_euro = druk_cac * verd_ws * druk_cfg.oplage
+
+        marketing_budget += druk_marketing_budget
+        marketing_marge_totaal += druk_marketing_marge_totaal
+        marketing_cac_euro += druk_marketing_cac_euro
+
+        drukken_out.append({
             **druk_to_dict(d, verd_ws, verd_rt, verd_b2b),
             "kosten_totaal": d.kosten_totaal,
             "drukkosten_totaal": d.drukkosten_totaal,
-        }
-        for d in res.drukken
-    ]
+            "marketing_budget": druk_marketing_budget,
+            "marketing_marge_totaal": druk_marketing_marge_totaal,
+            "marketing_cac_euro": druk_marketing_cac_euro,
+        })
 
     # Gewogen marge over ALLE drukken: som euro-winst / som euro-omzet,
     # gewogen met oplage per druk.
@@ -218,6 +228,7 @@ def run_calculation(data: dict) -> dict:
         "drukken": drukken_out,
         "gewogen_marge_pct_totaal": marge_totaal,
         "totaal_oplage": sum(d["oplage"] for d in drukken_out),
+        # Backward compat: som over alle drukken.
         "marketing_budget": marketing_budget,
         "marketing_marge_totaal": marketing_marge_totaal,
         "marketing_cac_euro": marketing_cac_euro,
@@ -1218,49 +1229,58 @@ def export_excel():
         ws_sheet[f"A{r}"].font = Font(size=8, italic=True, color="FF999999")
         r += 1
 
-    # ── MARKETING ──
+    # ── MARKETING (per druk) ──
     ws_sheet.merge_cells(f"A{r}:F{r}")
     h2(ws_sheet[f"A{r}"], "MARKETING")
     r += 1
 
-    marketing_budget = calc.get("marketing_budget", 0.0)
-    label(ws_sheet[f"A{r}"], "Berekend marketingbudget", bold=True)
-    val(ws_sheet[f"B{r}"], marketing_budget, "€ #,##0", bold=True)
-    r += 1
+    for dk, calc_druk in zip(drukken_cfg, calc.get("drukken", [])):
+        druknr = dk.get("druknummer", 1)
+        druk_marketing_budget = calc_druk.get("marketing_budget", 0.0)
 
-    marketing_onderdelen = ti.get("marketing_onderdelen") or []
-    if marketing_onderdelen:
-        for col, hdr in enumerate(["Onderdeel", "Toegewezen", "Committed", "Besteed"], 1):
-            th(ws_sheet.cell(r, col), hdr)
-            ws_sheet.cell(r, col).alignment = Alignment(horizontal="left" if col == 1 else "right")
+        ws_sheet.cell(r, 1).value = f"{druknr}e druk"
+        ws_sheet.cell(r, 1).font = Font(bold=True, size=10)
+        ws_sheet.cell(r, 1).fill = PatternFill("solid", fgColor="FFF5F5F5")
         r += 1
 
-        tot_toegewezen = tot_committed = tot_besteed = 0.0
-        for o in sorted(marketing_onderdelen, key=lambda x: x.get("volgorde", 0)):
-            o_toegewezen = o.get("toegewezen", 0) or 0
-            o_committed = o.get("committed", 0) or 0
-            o_besteed = o.get("besteed", 0) or 0
-            tot_toegewezen += o_toegewezen
-            tot_committed += o_committed
-            tot_besteed += o_besteed
-            label(ws_sheet[f"A{r}"], f"  {o.get('naam') or o.get('id', '?')}")
-            val(ws_sheet[f"B{r}"], o_toegewezen, "€ #,##0")
-            val(ws_sheet[f"C{r}"], o_committed, "€ #,##0")
-            val(ws_sheet[f"D{r}"], o_besteed, "€ #,##0")
+        label(ws_sheet[f"A{r}"], "  Berekend marketingbudget", bold=True)
+        val(ws_sheet[f"B{r}"], druk_marketing_budget, "€ #,##0", bold=True)
+        r += 1
+
+        marketing_onderdelen = dk.get("marketing_onderdelen") or []
+        if marketing_onderdelen:
+            for col, hdr in enumerate(["Onderdeel", "Toegewezen", "Committed", "Besteed"], 1):
+                th(ws_sheet.cell(r, col), hdr)
+                ws_sheet.cell(r, col).alignment = Alignment(horizontal="left" if col == 1 else "right")
             r += 1
 
-        label(ws_sheet[f"A{r}"], "Totaal", bold=True)
-        val(ws_sheet[f"B{r}"], tot_toegewezen, "€ #,##0", bold=True)
-        val(ws_sheet[f"C{r}"], tot_committed, "€ #,##0", bold=True)
-        val(ws_sheet[f"D{r}"], tot_besteed, "€ #,##0", bold=True)
-        r += 1
+            tot_toegewezen = tot_committed = tot_besteed = 0.0
+            for o in sorted(marketing_onderdelen, key=lambda x: x.get("volgorde", 0)):
+                o_toegewezen = o.get("toegewezen", 0) or 0
+                o_committed = o.get("committed", 0) or 0
+                o_besteed = o.get("besteed", 0) or 0
+                tot_toegewezen += o_toegewezen
+                tot_committed += o_committed
+                tot_besteed += o_besteed
+                label(ws_sheet[f"A{r}"], f"    {o.get('naam') or o.get('id', '?')}")
+                val(ws_sheet[f"B{r}"], o_toegewezen, "€ #,##0")
+                val(ws_sheet[f"C{r}"], o_committed, "€ #,##0")
+                val(ws_sheet[f"D{r}"], o_besteed, "€ #,##0")
+                r += 1
 
-        nog_over = marketing_budget - tot_toegewezen
-        label(ws_sheet[f"A{r}"], "Nog over (t.o.v. toegewezen)")
-        val(
-            ws_sheet[f"B{r}"], nog_over, "€ #,##0",
-            color="FFD32F2F" if nog_over < 0 else None,
-        )
+            label(ws_sheet[f"A{r}"], "  Totaal", bold=True)
+            val(ws_sheet[f"B{r}"], tot_toegewezen, "€ #,##0", bold=True)
+            val(ws_sheet[f"C{r}"], tot_committed, "€ #,##0", bold=True)
+            val(ws_sheet[f"D{r}"], tot_besteed, "€ #,##0", bold=True)
+            r += 1
+
+            nog_over = druk_marketing_budget - tot_toegewezen
+            label(ws_sheet[f"A{r}"], "  Nog over (t.o.v. toegewezen)")
+            val(
+                ws_sheet[f"B{r}"], nog_over, "€ #,##0",
+                color="FFD32F2F" if nog_over < 0 else None,
+            )
+            r += 1
         r += 1
     r += 1
 

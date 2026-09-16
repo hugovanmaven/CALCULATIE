@@ -15,12 +15,14 @@ def _payload(**over):
         "boekhandelskorting": 0.48,
         "fulfillment_per_ex": 4.50,
         "transactiekosten_pct": 0.002,
-        "drukken": [{"druknummer": 1, "oplage": 2000, "drukkosten_per_ex": 1.0}],
-        "marketing_budget_pct": 0.08,
-        "marketing_onderdelen": [
-            {"id": "a", "naam": "A", "groep": "offline_marketing",
-             "toegewezen": 1000, "committed": 0, "besteed": 0},
-        ],
+        "drukken": [{
+            "druknummer": 1, "oplage": 2000, "drukkosten_per_ex": 1.0,
+            "marketing_budget_pct": 0.08,
+            "marketing_onderdelen": [
+                {"id": "a", "naam": "A", "groep": "offline_marketing",
+                 "toegewezen": 1000, "committed": 0, "besteed": 0},
+            ],
+        }],
     }
     data = {"titel_input": ti, "verdeling_webshop": 0, "verdeling_retail": 1, "verdeling_b2b": 0}
     data.update(over)
@@ -29,14 +31,18 @@ def _payload(**over):
 
 def test_dict_to_titel_input_parseert_marketing():
     t = dict_to_titel_input(_payload()["titel_input"])
-    assert t.marketing_budget_pct == pytest.approx(0.08, abs=1e-6)
-    assert len(t.marketing_onderdelen) == 1
-    assert t.marketing_onderdelen[0].toegewezen == pytest.approx(1000, abs=TOL)
+    druk = t.drukken[0]
+    assert druk.marketing_budget_pct == pytest.approx(0.08, abs=1e-6)
+    assert len(druk.marketing_onderdelen) == 1
+    assert druk.marketing_onderdelen[0].toegewezen == pytest.approx(1000, abs=TOL)
 
 
 def test_run_calculation_geeft_budget():
     out = run_calculation(_payload())
     # retail-only: 0.08 * 2000 * 5.20 = 832
+    assert out["drukken"][0]["marketing_budget"] == pytest.approx(832.0, abs=TOL)
+    assert out["drukken"][0]["marketing_marge_totaal"] == pytest.approx(1000.0, abs=TOL)
+    # top-level = som over alle drukken (backward compat); hier maar 1 druk.
     assert out["marketing_budget"] == pytest.approx(832.0, abs=TOL)
     assert out["marketing_marge_totaal"] == pytest.approx(1000.0, abs=TOL)
 
@@ -49,6 +55,7 @@ def test_run_calculation_cac_euro():
     out = run_calculation(data)
     # cac_euro = 2.0 * 0.25 * 2000 = 1000
     assert out["marketing_cac_euro"] == pytest.approx(1000.0, abs=TOL)
+    assert out["drukken"][0]["marketing_cac_euro"] == pytest.approx(1000.0, abs=TOL)
 
 
 def test_run_calculation_negeert_marketing_kostenposten_dubbeltelling():
