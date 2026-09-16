@@ -36,6 +36,13 @@ def _kostenposten_list(items: list[dict]) -> list[KostenPost]:
             bedrag=kp.get("bedrag", 0.0),
         )
         for kp in items
+        # Marketing is verhuisd naar marketing_onderdelen (zie
+        # _marketing_onderdelen_list). Een raw/niet-gemigreerde titel_input
+        # (bv. via de MCP what-if 'bereken'-route) kan nog oude
+        # offline_marketing/online_marketing kostenposten bevatten; die
+        # negeren we hier defensief om dubbeltelling te voorkomen
+        # (eenmaal in kosten_per_ex, eenmaal in marketing_onderdelen).
+        if kp["categorie"] not in ("offline_marketing", "online_marketing")
     ]
 
 

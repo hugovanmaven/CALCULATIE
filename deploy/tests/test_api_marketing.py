@@ -49,3 +49,45 @@ def test_run_calculation_cac_euro():
     out = run_calculation(data)
     # cac_euro = 2.0 * 0.25 * 2000 = 1000
     assert out["marketing_cac_euro"] == pytest.approx(1000.0, abs=TOL)
+
+
+def test_run_calculation_negeert_marketing_kostenposten_dubbeltelling():
+    """Marketing leeft in marketing_onderdelen. Een niet-gemigreerde
+    titel_input (bv. via de MCP what-if 'bereken'-route) kan nog een
+    oude offline_marketing/online_marketing kostenpost bevatten naast
+    marketing_onderdelen. Die kostenpost mag niet meetellen in
+    kosten_per_ex, anders wordt marketing dubbel geteld."""
+    baseline = _payload()
+    out_baseline = run_calculation(baseline)
+
+    met_oude_kostenpost = _payload()
+    met_oude_kostenpost["titel_input"]["drukken"][0]["kostenposten"] = [
+        {"id": "k1", "naam": "Oude marketingpost", "categorie": "offline_marketing", "bedrag": 500.0},
+    ]
+    out_met_oude_kostenpost = run_calculation(met_oude_kostenpost)
+
+    # De oude offline_marketing kostenpost mag NIET meetellen in kosten_per_ex
+    # (anders dubbeltelling met marketing_onderdelen).
+    assert (
+        out_met_oude_kostenpost["drukken"][0]["kosten_totaal"]
+        == pytest.approx(out_baseline["drukken"][0]["kosten_totaal"], abs=TOL)
+    )
+    assert (
+        out_met_oude_kostenpost["drukken"][0]["retail"]["kosten_per_ex"]
+        == pytest.approx(out_baseline["drukken"][0]["retail"]["kosten_per_ex"], abs=TOL)
+    )
+    assert (
+        out_met_oude_kostenpost["gewogen_marge_pct_totaal"]
+        == pytest.approx(out_baseline["gewogen_marge_pct_totaal"], abs=TOL)
+    )
+
+
+def test_run_calculation_houdt_productie_kostenposten_wel_mee():
+    """Sanity check: het filter mag alleen marketing-categorieën raken,
+    niet productie-kostenposten."""
+    data = _payload()
+    data["titel_input"]["drukken"][0]["kostenposten"] = [
+        {"id": "k1", "naam": "Productiekost", "categorie": "productie", "bedrag": 500.0},
+    ]
+    out = run_calculation(data)
+    assert out["drukken"][0]["kosten_totaal"] == pytest.approx(500.0, abs=TOL)
