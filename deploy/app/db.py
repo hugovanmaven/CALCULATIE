@@ -126,6 +126,10 @@ class Titel(db.Model):
     extra_derden = Column(JSON, default=list)
     overige_kosten_items = Column(JSON, default=list)
 
+    # ── Marketing-budgetplanner (titel-niveau) ──
+    marketing_budget_pct = Column(Numeric(8, 6), default=0.08)
+    marketing_onderdelen = Column(JSON, default=list)
+
 
 class TitelHistorie(db.Model):
     """Versiegeschiedenis per titel: één snapshot per bewerksessie.

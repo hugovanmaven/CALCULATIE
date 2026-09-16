@@ -85,6 +85,7 @@ _SCALAR_FIELDS = [
     "illustrator_pct", "illustrator_winstdeling_pct", "illustrator_voorschot",
     "heeft_partner", "partner_naam", "partner_winstdeling_pct",
     "overige_kosten_pct",
+    "marketing_budget_pct",
 ]
 
 # JSON-velden in titel_input
@@ -96,6 +97,7 @@ _JSON_FIELDS = [
     "illustrator_staffel",
     "extra_derden",
     "overige_kosten_items",
+    "marketing_onderdelen",
 ]
 
 
@@ -510,6 +512,18 @@ def ensure_schema():
                 "ALTER TABLE titels ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
             ))
         print("[storage] schema: kolom 'version' toegevoegd aan titels")
+    if "marketing_budget_pct" not in cols:
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE titels ADD COLUMN marketing_budget_pct NUMERIC(8,6) DEFAULT 0.08"
+            ))
+        print("[storage] schema: kolom 'marketing_budget_pct' toegevoegd aan titels")
+    if "marketing_onderdelen" not in cols:
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "ALTER TABLE titels ADD COLUMN marketing_onderdelen JSON DEFAULT '[]'"
+            ))
+        print("[storage] schema: kolom 'marketing_onderdelen' toegevoegd aan titels")
 
 
 def migrate_from_json_if_needed():
