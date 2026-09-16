@@ -44,17 +44,6 @@ export function CalculatieForm({
     updateField('drukken', drukken.map((d, i) => (i === idx ? updated : d)));
   };
 
-  // CAC per webshop-aankoop is per ontwerp gebonden aan de eerste druk
-  // (marketing_per_ex telt alleen mee op de eerste druk, zie calculatie.py).
-  const eersteDrukIdx = drukken.length
-    ? drukken.reduce((best, d, i) => (d.druknummer < drukken[best].druknummer ? i : best), 0)
-    : -1;
-  const cacPerEx = eersteDrukIdx >= 0 ? (drukken[eersteDrukIdx].cac_per_ex ?? 0) : 0;
-  const updateEersteDrukCac = (v: number) => {
-    if (eersteDrukIdx < 0) return;
-    updateDruk(eersteDrukIdx, { ...drukken[eersteDrukIdx], cac_per_ex: v });
-  };
-
   return (
     <div className="space-y-1">
       {/* ─── TITEL & BOEK ─── */}
@@ -84,18 +73,24 @@ export function CalculatieForm({
         </Section>
       ))}
 
-      {/* ─── MARKETING — budgetplanner (o.b.v. eerste oplage) ─── */}
+      {/* ─── MARKETING — budgetplanner per druk ─── */}
       <GroupLabel>Marketing</GroupLabel>
 
-      <Section title="Marketingbudget" defaultOpen>
-        <MarketingPlannerSection
-          titelInput={titelInput}
-          updateField={updateField}
-          verdeling={verdeling}
-          cacPerEx={cacPerEx}
-          setCacPerEx={updateEersteDrukCac}
-        />
-      </Section>
+      {drukken.map((druk, idx) => (
+        <Section
+          key={`mkt-${idx}`}
+          title={`${druk.druknummer}e druk`}
+          subtitle={`${druk.oplage.toLocaleString('nl-NL')} ex`}
+          defaultOpen={idx === 0}
+        >
+          <MarketingPlannerSection
+            druk={druk}
+            onDrukChange={updated => updateDruk(idx, updated)}
+            titelInput={titelInput}
+            verdeling={verdeling}
+          />
+        </Section>
+      ))}
 
       {/* ─── VERKOOPKANALEN ─── */}
       <GroupLabel>Verkoopkanalen</GroupLabel>

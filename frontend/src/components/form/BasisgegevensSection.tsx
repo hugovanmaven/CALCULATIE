@@ -1,5 +1,5 @@
 import type { TitelInput, DrukConfig } from '../../api/types';
-import { DEFAULT_KOSTENPOSTEN } from '../../api/types';
+import { DEFAULT_KOSTENPOSTEN, DEFAULT_MARKETING_ONDERDELEN } from '../../api/types';
 import { NumberInput } from './NumberInput';
 import { Plus, Trash2 } from 'lucide-react';
 
@@ -31,6 +31,8 @@ export function BasisgegevensSection({ titelInput, updateField }: Props) {
       oplage: lastDruk?.oplage ?? 2000,
       drukkosten_per_ex: lastDruk?.drukkosten_per_ex ?? 1.20,
       kostenposten: [...DEFAULT_KOSTENPOSTEN],
+      marketing_budget_pct: lastDruk?.marketing_budget_pct ?? 0.08,
+      marketing_onderdelen: [...DEFAULT_MARKETING_ONDERDELEN],
     }]);
   };
 

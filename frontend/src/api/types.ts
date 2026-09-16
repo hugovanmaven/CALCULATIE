@@ -42,6 +42,8 @@ export interface DrukConfig {
   drukkosten_per_ex: number;
   kostenposten: KostenPost[];
   cac_per_ex?: number;
+  marketing_budget_pct: number;
+  marketing_onderdelen: MarketingOnderdeel[];
 }
 
 export interface TitelInput {
@@ -89,9 +91,6 @@ export interface TitelInput {
   overige_kosten_items: OverigeKostenItem[];
   // Extra derden
   extra_derden: ExtraDerde[];
-  // Marketing
-  marketing_budget_pct: number;
-  marketing_onderdelen: MarketingOnderdeel[];
 }
 
 export interface CalculateRequest {
@@ -141,6 +140,9 @@ export interface DrukResultaat {
   gewogen_marge_pct: number;
   gewogen_netto_winst: number;
   gewogen_netto_omzet: number;
+  marketing_budget?: number;
+  marketing_marge_totaal?: number;
+  marketing_cac_euro?: number;
 }
 
 export interface CalculateResponse {
@@ -280,6 +282,8 @@ export const DEFAULT_DRUK: DrukConfig = {
   drukkosten_per_ex: 1.20,
   kostenposten: [...DEFAULT_KOSTENPOSTEN],
   cac_per_ex: 0,
+  marketing_budget_pct: 0.08,
+  marketing_onderdelen: [...DEFAULT_MARKETING_ONDERDELEN],
 };
 
 export const DEFAULT_TITEL_INPUT: TitelInput = {
@@ -327,7 +331,4 @@ export const DEFAULT_TITEL_INPUT: TitelInput = {
   overige_kosten_items: [],
   // Extra derden
   extra_derden: [],
-  // Marketing
-  marketing_budget_pct: 0.08,
-  marketing_onderdelen: [...DEFAULT_MARKETING_ONDERDELEN],
 };
