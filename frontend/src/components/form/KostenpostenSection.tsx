@@ -13,17 +13,10 @@ type CategorieConfig = { key: KostenPost['categorie']; label: string };
 
 const CATEGORIE_CONFIG: CategorieConfig[] = [
   { key: 'productie', label: 'Productie' },
-  { key: 'offline_marketing', label: 'Offline marketing' },
-  { key: 'online_marketing', label: 'Online marketing' },
 ];
 
 export const PRODUCTIE_CATEGORIES: CategorieConfig[] = [
   { key: 'productie', label: 'Productie' },
-];
-
-export const MARKETING_CATEGORIES: CategorieConfig[] = [
-  { key: 'offline_marketing', label: 'Offline' },
-  { key: 'online_marketing', label: 'Online' },
 ];
 
 function formatEuro(n: number): string {
@@ -222,7 +215,6 @@ export function DrukKostenBlock({
         const subtotal = items.reduce((sum, kp) => sum + kp.bedrag, 0);
 
         // Drukkosten-rij wordt vooraan in de productie-categorie getoond.
-        // Voor online marketing: CAC per webshop-aankoop (per-ex variabel).
         let leadingRow: React.ReactNode = null;
         if (cat.key === 'productie') {
           leadingRow = (
@@ -232,18 +224,6 @@ export function DrukKostenBlock({
                 bedrag={druk.drukkosten_per_ex}
                 onBedragChange={v => onDrukChange({ ...druk, drukkosten_per_ex: v })}
                 step={0.1}
-                suffix="/ex"
-              />
-            </div>
-          );
-        } else if (cat.key === 'online_marketing') {
-          leadingRow = (
-            <div className="grid grid-cols-2 gap-x-3">
-              <KostenRij
-                label="CAC per webshop-aankoop"
-                bedrag={druk.cac_per_ex ?? 0}
-                onBedragChange={v => onDrukChange({ ...druk, cac_per_ex: v })}
-                step={0.5}
                 suffix="/ex"
               />
             </div>

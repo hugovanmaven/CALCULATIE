@@ -2,7 +2,8 @@ import type { TitelInput, DrukConfig } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
 import { TitelgroepPicker } from './TitelgroepPicker';
-import { DrukKostenBlock, PRODUCTIE_CATEGORIES, MARKETING_CATEGORIES } from './KostenpostenSection';
+import { DrukKostenBlock, PRODUCTIE_CATEGORIES } from './KostenpostenSection';
+import { MarketingPlannerSection } from './MarketingPlannerSection';
 import { WebshopKostenSection } from './WebshopKostenSection';
 import { RetailKostenSection } from './RetailKostenSection';
 import { B2bKostenSection } from './B2bKostenSection';
@@ -43,6 +44,17 @@ export function CalculatieForm({
     updateField('drukken', drukken.map((d, i) => (i === idx ? updated : d)));
   };
 
+  // CAC per webshop-aankoop is per ontwerp gebonden aan de eerste druk
+  // (marketing_per_ex telt alleen mee op de eerste druk, zie calculatie.py).
+  const eersteDrukIdx = drukken.length
+    ? drukken.reduce((best, d, i) => (d.druknummer < drukken[best].druknummer ? i : best), 0)
+    : -1;
+  const cacPerEx = eersteDrukIdx >= 0 ? (drukken[eersteDrukIdx].cac_per_ex ?? 0) : 0;
+  const updateEersteDrukCac = (v: number) => {
+    if (eersteDrukIdx < 0) return;
+    updateDruk(eersteDrukIdx, { ...drukken[eersteDrukIdx], cac_per_ex: v });
+  };
+
   return (
     <div className="space-y-1">
       {/* ─── TITEL & BOEK ─── */}
@@ -72,24 +84,18 @@ export function CalculatieForm({
         </Section>
       ))}
 
-      {/* ─── MARKETING — Section per druk (incl. CAC) ─── */}
+      {/* ─── MARKETING — budgetplanner (o.b.v. eerste oplage) ─── */}
       <GroupLabel>Marketing</GroupLabel>
 
-      {drukken.map((druk, idx) => (
-        <Section
-          key={`mkt-${idx}`}
-          title={`Campagne ${druk.druknummer}e druk`}
-          subtitle={`${druk.oplage.toLocaleString('nl-NL')} ex`}
-          defaultOpen={idx === 0}
-        >
-          <DrukKostenBlock
-            druk={druk}
-            onDrukChange={updated => updateDruk(idx, updated)}
-            categorieën={MARKETING_CATEGORIES}
-            totaalLabel="Totaal campagne"
-          />
-        </Section>
-      ))}
+      <Section title="Marketingbudget" defaultOpen>
+        <MarketingPlannerSection
+          titelInput={titelInput}
+          updateField={updateField}
+          verdeling={verdeling}
+          cacPerEx={cacPerEx}
+          setCacPerEx={updateEersteDrukCac}
+        />
+      </Section>
 
       {/* ─── VERKOOPKANALEN ─── */}
       <GroupLabel>Verkoopkanalen</GroupLabel>
