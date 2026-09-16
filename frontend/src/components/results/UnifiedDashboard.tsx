@@ -480,6 +480,7 @@ function DetailWaterfall({ druk, verdeling, titelInput }: { druk: any; verdeling
     { label: 'Netto omzet', value: v('netto_omzet'), type: 'subtotal' },
     { label: 'Drukkosten /ex', value: -v('drukkosten') },
     { label: 'Kostenposten /ex', value: -v('kosten_per_ex') },
+    { label: 'Marketing', value: -v('marketing_per_ex') },
     { label: 'Fulfillment', value: -v('fulfillment') },
     { label: 'Distributie CB', value: -v('distributie_cb') },
     { label: 'B2B porto', value: -v('b2b_porto') },

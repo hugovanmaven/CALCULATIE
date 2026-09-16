@@ -108,6 +108,7 @@ export interface KanaalResultaat {
   netto_omzet: number;
   drukkosten: number;
   kosten_per_ex: number;
+  marketing_per_ex: number;
   fulfillment: number;
   distributie_cb: number;
   b2b_porto: number;
