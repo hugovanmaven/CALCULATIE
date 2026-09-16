@@ -78,6 +78,25 @@ def test_unknown_tool_is_error(client):
     assert result["isError"] is True
 
 
+def test_titel_detail_toont_marketingbudget_en_onderdelen(client):
+    titel_input = {
+        "titel": "Testtitel met marketing",
+        "verkoopprijs_incl_btw": 20.0,
+        "drukken": [{"druknummer": 1, "oplage": 3000, "drukkosten_per_ex": 1.2, "kostenposten": []}],
+        "marketing_budget_pct": 0.08,
+        "marketing_onderdelen": [
+            {"id": "a1", "naam": "Influencer campagne", "groep": "online_marketing",
+             "volgorde": 0, "toegewezen": 1500, "committed": 1200, "besteed": 900},
+        ],
+    }
+    result = rpc(client, "tools/call", {"name": "titel_detail", "arguments": {"titel_input": titel_input}}).get_json()["result"]
+    assert not result.get("isError")
+    tekst = result["content"][0]["text"]
+    assert "marketingbudget" in tekst.lower()
+    assert "Influencer campagne" in tekst
+    assert "nog over" in tekst.lower()
+
+
 def test_notification_returns_202(client):
     r = client.post("/mcp", json={"jsonrpc": "2.0", "method": "notifications/initialized"}, headers=AUTH)
     assert r.status_code == 202

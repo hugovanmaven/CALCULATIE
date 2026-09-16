@@ -156,6 +156,31 @@ def _format_calc(titel_label: str, calc: dict) -> str:
     return "\n".join(regels)
 
 
+def _format_marketing(ti: dict, calc: dict) -> str:
+    """Berekend marketingbudget + per onderdeel de drie fases (toegewezen/
+    committed/besteed), zoals de budgetplanner in de app.
+    """
+    budget = calc.get("marketing_budget", 0.0)
+    regels = ["Marketing:", f"  Berekend marketingbudget: {_eur(budget)}"]
+    onderdelen = ti.get("marketing_onderdelen") or []
+    if not onderdelen:
+        regels.append("  Geen marketing-onderdelen ingevuld.")
+        return "\n".join(regels)
+    tot_toegewezen = 0.0
+    for o in sorted(onderdelen, key=lambda x: x.get("volgorde", 0)):
+        toegewezen = o.get("toegewezen", 0) or 0
+        committed = o.get("committed", 0) or 0
+        besteed = o.get("besteed", 0) or 0
+        tot_toegewezen += toegewezen
+        regels.append(
+            f"  - {o.get('naam') or o.get('id', '?')}: toegewezen {_eur(toegewezen)},"
+            f" committed {_eur(committed)}, besteed {_eur(besteed)}"
+        )
+    nog_over = budget - tot_toegewezen
+    regels.append(f"  Nog over (t.o.v. toegewezen): {_eur(nog_over)}")
+    return "\n".join(regels)
+
+
 def _tool_titel_detail(args: dict) -> str:
     payload, err = _calc_request_from_args(args)
     if err:
@@ -166,6 +191,7 @@ def _tool_titel_detail(args: dict) -> str:
     ti = payload["titel_input"]
     label = ti.get("titel", "Titel")
     tekst = _format_calc(label, calc)
+    tekst += "\n\n" + _format_marketing(ti, calc)
     # Ruwe titel_input eronder, zodat een what-if eenvoudig te maken is door
     # velden aan te passen en `bereken` aan te roepen.
     tekst += "\n\nRuwe titel_input (voor what-if via `bereken`):\n```json\n"
