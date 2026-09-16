@@ -240,6 +240,7 @@ class KanaalResultaat:
     # Kostenregels
     drukkosten: float = 0.0
     kosten_per_ex: float = 0.0          # som van alle kostenposten / oplage
+    marketing_per_ex: float = 0.0      # planner-marketing, alleen eerste druk
     fulfillment: float = 0.0            # alleen webshop
     distributie_cb: float = 0.0         # alleen retail
     b2b_porto: float = 0.0              # alleen B2B
@@ -298,6 +299,7 @@ def bereken_kanaal(
     oplage: int,
     drukkosten_per_ex: float,
     cac_per_ex: float = 0.0,
+    marketing_per_ex: float = 0.0,
 ) -> KanaalResultaat:
     """Bereken de marge voor één kanaal van één druk."""
     r = KanaalResultaat(kanaal=kanaal)
@@ -318,6 +320,7 @@ def bereken_kanaal(
     # ── STAP 2: Kosten per exemplaar ──
     r.drukkosten = drukkosten_per_ex
     r.kosten_per_ex = kosten_per_ex
+    r.marketing_per_ex = marketing_per_ex
 
     if kanaal == "webshop":
         r.fulfillment = t.fulfillment_per_ex
@@ -384,6 +387,7 @@ def bereken_kanaal(
     r.totaal_kosten = (
         r.drukkosten
         + r.kosten_per_ex
+        + r.marketing_per_ex
         + r.fulfillment
         + r.distributie_cb
         + r.b2b_porto
@@ -457,6 +461,10 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
     res = CalculatieResultaat(titel=t.titel)
     cumulatief = 0
 
+    # Marketing-planner: Σ max(toegewezen, committed, besteed). Deze kost
+    # hangt aan de eerste (launch-)druk, uitgesmeerd over die oplage.
+    marketing_marge_totaal = sum(o.marge_kost() for o in (t.marketing_onderdelen or []))
+
     # Drukken altijd op druknummer verwerken: de royalty-staffel loopt
     # cumulatief, dus de volgorde bepaalt welke staffel-trede elke druk pakt.
     # Zo klopt de per-druk uitsplitsing ongeacht de invoervolgorde.
@@ -466,6 +474,10 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
         oplage = druk_cfg.oplage
         kosten_totaal = sum(kp.bedrag for kp in druk_cfg.kostenposten)
         kosten_per_ex = kosten_totaal / oplage if oplage > 0 else 0.0
+
+        marketing_per_ex = (
+            marketing_marge_totaal / oplage if (i == 0 and oplage > 0) else 0.0
+        )
 
         druk = DrukResultaat(
             druk_type=f"{druk_cfg.druknummer}e druk",
@@ -485,6 +497,7 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
                 oplage=oplage,
                 drukkosten_per_ex=druk_cfg.drukkosten_per_ex,
                 cac_per_ex=druk_cac,
+                marketing_per_ex=marketing_per_ex,
             )
             setattr(druk, kanaal, result)
         res.drukken.append(druk)

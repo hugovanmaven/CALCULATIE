@@ -873,3 +873,39 @@ class TestMarketingBudget:
     def test_geen_drukken_geeft_nul(self):
         t = _titel(drukken=[])
         assert bereken_marketing_budget(t, 0, 1, 0) == pytest.approx(0.0, abs=TOL)
+
+
+class TestMarketingMargeIntegratie:
+    def _titel_met_onderdelen(self, **kw):
+        onderdelen = [
+            MarketingOnderdeel(id="a", naam="A", toegewezen=1000, committed=500, besteed=200),
+            MarketingOnderdeel(id="b", naam="B", toegewezen=0, committed=0, besteed=600),
+        ]
+        # Σ max = max(1000,500,200)=1000 + max(0,0,600)=600 = 1600
+        return _titel(marketing_onderdelen=onderdelen, **kw)
+
+    def test_marketing_per_ex_op_eerste_druk(self):
+        # 1600 / 2000 = 0.80 per exemplaar op elk kanaal
+        d = _bereken(self._titel_met_onderdelen())
+        assert d.webshop.marketing_per_ex == pytest.approx(0.80, abs=TOL)
+        assert d.retail.marketing_per_ex == pytest.approx(0.80, abs=TOL)
+        assert d.b2b.marketing_per_ex == pytest.approx(0.80, abs=TOL)
+
+    def test_marketing_verlaagt_brutowinst(self):
+        basis = _bereken(_titel()).retail.brutowinst
+        met = _bereken(self._titel_met_onderdelen()).retail.brutowinst
+        assert met == pytest.approx(basis - 0.80, abs=TOL)
+
+    def test_alleen_eerste_druk_krijgt_marketing(self):
+        from app.calculatie import DrukConfig, bereken_titel
+        t = self._titel_met_onderdelen(drukken=[
+            DrukConfig(druknummer=1, oplage=2000, drukkosten_per_ex=1.0),
+            DrukConfig(druknummer=2, oplage=2000, drukkosten_per_ex=1.0),
+        ])
+        res = bereken_titel(t)
+        assert res.drukken[0].webshop.marketing_per_ex == pytest.approx(0.80, abs=TOL)
+        assert res.drukken[1].webshop.marketing_per_ex == pytest.approx(0.0, abs=TOL)
+
+    def test_geen_onderdelen_geen_marketingkost(self):
+        d = _bereken(_titel())
+        assert d.retail.marketing_per_ex == pytest.approx(0.0, abs=TOL)
