@@ -184,3 +184,40 @@ laden/opslaan van een titel zonder `marketing_onderdelen`:
 - Formules-in-Excel (aparte PR, niet hier).
 - Read-write MCP-tools (alleen `titel_detail` uitbreiden, read-only).
 - Per-druk marketingbudget (v1 = alleen eerste druk).
+
+---
+
+## Addendum v2 (na preview-feedback, 2026-09-16)
+
+Drie wijzigingen t.o.v. v1, in één herbouw:
+
+### 1. Per druk i.p.v. titel-niveau + eerste-druk
+`marketing_budget_pct` en `marketing_onderdelen` verhuizen van `TitelInput`
+naar **`DrukConfig`** (elke druk eigen budget + eigen 7 basis-onderdelen),
+opgeslagen in de bestaande `drukken`-JSON. De twee titel-kolommen
+(`marketing_budget_pct`, `marketing_onderdelen`) vervallen weer — geen
+nieuwe DB-kolommen nodig.
+- Budget per druk = `pct × druk.oplage × Σ aandeel×basis` (prijs/korting/
+  verdeling blijven titel-niveau).
+- Marge: elke druk telt z'n eigen `Σ marge_kost` mee, uitgesmeerd over díe
+  druk-oplage. Het "alleen eerste druk"-special-case in `bereken_titel`
+  vervalt. CAC was al per druk.
+- Migratie: per druk worden de oude offline/online-kostenposten van díe
+  druk z'n `marketing_onderdelen`.
+
+### 2. Marge-kost = encumbrance-model
+`MarketingOnderdeel.marge_kost()` = **`max(toegewezen, committed + besteed)`**
+(was `max(toegewezen, committed, besteed)`). Committed = vastgelegd maar
+onbetaald; besteed = betaald; disjunct en optelbaar. Discipline: betaalde
+bedragen verschuiven van committed naar besteed.
+
+### 3. Compacte, inklapbare UI in de rail (per druk)
+Onder de groep "Marketing" één inklapbare `Section` **per druk** (zoals
+Productie). Elke sectie:
+- Budget-tile van díe druk + %-veld.
+- Altijd-zichtbare samenvattingsbalk: Σ toegewezen · Σ committed ·
+  Σ besteed · nog over (= budget − Σ toegewezen).
+- Compacte onderdeel-rijen: ingeklapt tonen ze `(committed+besteed) /
+  toegewezen` rechts (rood bij overschrijding); uitgeklapt de gelabelde
+  velden Toegewezen (€ + %), Committed (€), Besteed (€).
+- "+ onderdeel" per groep; CAC-regel van díe druk informatief onder Online.
