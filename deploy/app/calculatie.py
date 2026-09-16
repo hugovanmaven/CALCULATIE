@@ -191,6 +191,39 @@ def bereken_gemiddeld_staffel_percentage(
     return totaal_gewogen / aantal_exemplaren
 
 
+def bereken_marketing_budget(
+    t: TitelInput,
+    verdeling_webshop: float,
+    verdeling_retail: float,
+    verdeling_b2b: float,
+) -> float:
+    """Berekend marketingbudget o.b.v. de eerste oplage.
+
+    budget = pct × eerste_oplage × Σ_kanaal ( aandeel × basis_per_ex ),
+    waarbij basis_per_ex = verkoopprijs ex btw minus wat het kanaal kost:
+      retail  : − boekhandelskorting (NIET CB-distributie)
+      webshop : − fulfillment/ex − transactiekosten/ex
+      b2b     : − b2b-korting − porto/ex
+    """
+    if not t.drukken:
+        return 0.0
+    eerste_oplage = sorted(t.drukken, key=lambda d: d.druknummer)[0].oplage
+    vkp_ex = t.verkoopprijs_incl_btw / (1 + t.btw_percentage)
+
+    retail_basis = vkp_ex - vkp_ex * t.boekhandelskorting
+    webshop_basis = (
+        vkp_ex - t.fulfillment_per_ex - t.verkoopprijs_incl_btw * t.transactiekosten_pct
+    )
+    b2b_basis = vkp_ex - vkp_ex * t.b2b_korting_pct - t.b2b_porto_per_ex
+
+    gewogen_basis = (
+        verdeling_webshop * webshop_basis
+        + verdeling_retail * retail_basis
+        + verdeling_b2b * b2b_basis
+    )
+    return t.marketing_budget_pct * eerste_oplage * gewogen_basis
+
+
 # ──────────────────────────────────────────────────────────────────────
 #  RESULTAAT MODELS
 # ──────────────────────────────────────────────────────────────────────

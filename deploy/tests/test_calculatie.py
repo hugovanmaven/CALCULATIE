@@ -827,3 +827,49 @@ class TestMarketingOnderdeel:
         t = _titel()
         assert t.marketing_budget_pct == pytest.approx(0.08, abs=TOL)
         assert t.marketing_onderdelen == []
+
+
+from app.calculatie import bereken_marketing_budget
+
+
+class TestMarketingBudget:
+    def test_retail_only(self):
+        # vkp_ex=10, retail_basis = 10 - 10*0.48 = 5.20
+        # budget = 0.08 * 2000 * 5.20 = 832
+        t = _titel()
+        b = bereken_marketing_budget(t, verdeling_webshop=0, verdeling_retail=1, verdeling_b2b=0)
+        assert b == pytest.approx(832.0, abs=1e-2)
+
+    def test_webshop_only(self):
+        # webshop_basis = 10 - 4.50 - 10.90*0.002 = 5.4782
+        # budget = 0.08 * 2000 * 5.4782 = 876.512
+        t = _titel()
+        b = bereken_marketing_budget(t, verdeling_webshop=1, verdeling_retail=0, verdeling_b2b=0)
+        assert b == pytest.approx(876.512, abs=1e-2)
+
+    def test_b2b_only_met_korting_en_porto(self):
+        # b2b_basis = 10 - 10*0.20 - 0.50 = 7.50
+        # budget = 0.08 * 2000 * 7.50 = 1200
+        t = _titel(b2b_korting_pct=0.20, b2b_porto_per_ex=0.50)
+        b = bereken_marketing_budget(t, verdeling_webshop=0, verdeling_retail=0, verdeling_b2b=1)
+        assert b == pytest.approx(1200.0, abs=1e-2)
+
+    def test_pct_aanpasbaar(self):
+        t = _titel(marketing_budget_pct=0.10)
+        b = bereken_marketing_budget(t, 0, 1, 0)
+        # 0.10 * 2000 * 5.20 = 1040
+        assert b == pytest.approx(1040.0, abs=1e-2)
+
+    def test_gebruikt_eerste_druk_oplage(self):
+        from app.calculatie import DrukConfig
+        t = _titel(drukken=[
+            DrukConfig(druknummer=2, oplage=5000, drukkosten_per_ex=1.0),
+            DrukConfig(druknummer=1, oplage=1000, drukkosten_per_ex=1.0),
+        ])
+        # eerste druk = druknummer 1 → oplage 1000; 0.08*1000*5.20 = 416
+        b = bereken_marketing_budget(t, 0, 1, 0)
+        assert b == pytest.approx(416.0, abs=1e-2)
+
+    def test_geen_drukken_geeft_nul(self):
+        t = _titel(drukken=[])
+        assert bereken_marketing_budget(t, 0, 1, 0) == pytest.approx(0.0, abs=TOL)
