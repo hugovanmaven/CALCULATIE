@@ -101,6 +101,65 @@ _JSON_FIELDS = [
 ]
 
 
+DEFAULT_MARKETING_ONDERDELEN = [
+    {"id": "evenement", "naam": "Evenement", "groep": "offline_marketing"},
+    {"id": "marketingmateriaal", "naam": "Marketingmateriaal", "groep": "offline_marketing"},
+    {"id": "offline_campagne", "naam": "Offline campagne", "groep": "offline_marketing"},
+    {"id": "boekhandelsmateriaal", "naam": "Boekhandelsmateriaal", "groep": "offline_marketing"},
+    {"id": "productfotografie", "naam": "Productfotografie", "groep": "online_marketing"},
+    {"id": "productie_ads", "naam": "Productie ads", "groep": "online_marketing"},
+    {"id": "software_kosten", "naam": "Software kosten", "groep": "online_marketing"},
+]
+
+
+def _migrate_marketing(titel_input: dict) -> None:
+    """On-the-fly, idempotente migratie: bouw ``marketing_onderdelen`` uit de
+    oude offline/online-marketing kostenposten en strip die uit de drukken.
+
+    Doet niets als ``marketing_onderdelen`` al gevuld is."""
+    if titel_input.get("marketing_onderdelen"):
+        return
+
+    bedragen: dict[str, float] = {}
+    namen: dict[str, str] = {}
+    groepen: dict[str, str] = {}
+    for druk in (titel_input.get("drukken") or []):
+        if not isinstance(druk, dict):
+            continue
+        overgebleven = []
+        for kp in (druk.get("kostenposten") or []):
+            if kp.get("categorie") in ("offline_marketing", "online_marketing"):
+                kid = kp.get("id", "")
+                bedragen[kid] = bedragen.get(kid, 0.0) + (kp.get("bedrag") or 0.0)
+                namen[kid] = kp.get("naam", kid)
+                groepen[kid] = kp["categorie"]
+            else:
+                overgebleven.append(kp)
+        druk["kostenposten"] = overgebleven
+
+    onderdelen = []
+    seen = set()
+    for i, base in enumerate(DEFAULT_MARKETING_ONDERDELEN):
+        kid = base["id"]
+        seen.add(kid)
+        onderdelen.append({
+            "id": kid, "naam": base["naam"], "groep": base["groep"], "volgorde": i,
+            "toegewezen": bedragen.get(kid, 0.0), "committed": 0.0, "besteed": 0.0,
+        })
+    volgorde = len(onderdelen)
+    for kid, bedrag in bedragen.items():
+        if kid in seen:
+            continue
+        onderdelen.append({
+            "id": kid, "naam": namen.get(kid, kid),
+            "groep": groepen.get(kid, "offline_marketing"), "volgorde": volgorde,
+            "toegewezen": bedrag, "committed": 0.0, "besteed": 0.0,
+        })
+        volgorde += 1
+
+    titel_input["marketing_onderdelen"] = onderdelen
+
+
 def _decimal_to_float(v):
     """SQLAlchemy retourneert Decimal voor Numeric-kolommen; converteer naar float."""
     if isinstance(v, Decimal):
@@ -124,6 +183,10 @@ def titel_to_dict(t) -> dict:
         for druk in titel_input["drukken"]:
             if isinstance(druk, dict) and not druk.get("cac_per_ex"):
                 druk["cac_per_ex"] = titel_cac
+
+    # Migratie on-the-fly: oude offline/online-marketing kostenposten →
+    # marketing_onderdelen (idempotent).
+    _migrate_marketing(titel_input)
 
     return {
         "titel_input": titel_input,
