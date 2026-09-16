@@ -35,11 +35,12 @@ class KostenPost:
 
 @dataclass
 class MarketingOnderdeel:
-    """Eén onderdeel in de marketing-budgetplanner (titel-niveau).
+    """Eén onderdeel in de marketing-budgetplanner, PER DRUK.
 
-    Drie fases van het geld: toegewezen (gepland) → committed (toegezegd/
-    in progress) → besteed (factuur betaald). In de marge telt het maximum
-    van de drie mee: het plan is de ondergrens, overschrijdingen tellen extra.
+    Encumbrance-model: committed (vastgelegd, onbetaald) en besteed (betaald)
+    zijn disjuncte, optelbare buckets — samen de werkelijke belasting van het
+    budget. Toegewezen (het plan) is de ondergrens: leg je + betaal je meer
+    vast dan gepland, dan telt dat mee in de marge.
     """
     id: str = ""
     naam: str = ""
@@ -50,7 +51,10 @@ class MarketingOnderdeel:
     besteed: float = 0.0
 
     def marge_kost(self) -> float:
-        return max(self.toegewezen, self.committed, self.besteed)
+        # Encumbrance-model: committed (vastgelegd, onbetaald) en besteed
+        # (betaald) zijn disjunct en optelbaar. Het plan (toegewezen) is de
+        # ondergrens; leg je méér vast+betaald dan gepland, dan telt dat.
+        return max(self.toegewezen, self.committed + self.besteed)
 
 
 @dataclass
@@ -63,6 +67,10 @@ class DrukConfig:
     # CAC per druk: gemiddelde online-ad-uitgave per webshop-aankoop voor
     # deze druk. Komt vrijwel altijd uit een nieuwe campagne per druk.
     cac_per_ex: float = 0.0
+    # Marketing-budgetplanner per druk (parallel aan kostenposten): eigen
+    # budget-% en onderdelen; elke druk berekent z'n budget uit z'n eigen oplage.
+    marketing_budget_pct: float = 0.08
+    marketing_onderdelen: list["MarketingOnderdeel"] = field(default_factory=list)
 
 
 @dataclass
@@ -148,10 +156,6 @@ class TitelInput:
     # ── Overige kosten (% van netto omzet) ──
     overige_kosten_pct: float = 0.0
 
-    # ── Marketing-budgetplanner (titel-niveau) ──
-    marketing_budget_pct: float = 0.08
-    marketing_onderdelen: list["MarketingOnderdeel"] = field(default_factory=list)
-
 
 # ──────────────────────────────────────────────────────────────────────
 #  STAFFEL BEREKENING
@@ -193,35 +197,32 @@ def bereken_gemiddeld_staffel_percentage(
 
 def bereken_marketing_budget(
     t: TitelInput,
+    druk: "DrukConfig",
     verdeling_webshop: float,
     verdeling_retail: float,
     verdeling_b2b: float,
 ) -> float:
-    """Berekend marketingbudget o.b.v. de eerste oplage.
+    """Berekend marketingbudget voor één druk.
 
-    budget = pct × eerste_oplage × Σ_kanaal ( aandeel × basis_per_ex ),
-    waarbij basis_per_ex = verkoopprijs ex btw minus wat het kanaal kost:
+    budget = druk.marketing_budget_pct × druk.oplage × Σ_kanaal ( aandeel × basis_per_ex ).
+    basis_per_ex = verkoopprijs ex btw minus wat het kanaal kost:
       retail  : − boekhandelskorting (NIET CB-distributie)
       webshop : − fulfillment/ex − transactiekosten/ex
       b2b     : − b2b-korting − porto/ex
+    Prijs, kortingen en kanaalverdeling zijn titel-niveau; oplage en pct per druk.
     """
-    if not t.drukken:
-        return 0.0
-    eerste_oplage = sorted(t.drukken, key=lambda d: d.druknummer)[0].oplage
     vkp_ex = t.verkoopprijs_incl_btw / (1 + t.btw_percentage)
-
     retail_basis = vkp_ex - vkp_ex * t.boekhandelskorting
     webshop_basis = (
         vkp_ex - t.fulfillment_per_ex - t.verkoopprijs_incl_btw * t.transactiekosten_pct
     )
     b2b_basis = vkp_ex - vkp_ex * t.b2b_korting_pct - t.b2b_porto_per_ex
-
     gewogen_basis = (
         verdeling_webshop * webshop_basis
         + verdeling_retail * retail_basis
         + verdeling_b2b * b2b_basis
     )
-    return t.marketing_budget_pct * eerste_oplage * gewogen_basis
+    return druk.marketing_budget_pct * druk.oplage * gewogen_basis
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -240,7 +241,7 @@ class KanaalResultaat:
     # Kostenregels
     drukkosten: float = 0.0
     kosten_per_ex: float = 0.0          # som van alle kostenposten / oplage
-    marketing_per_ex: float = 0.0      # planner-marketing, alleen eerste druk
+    marketing_per_ex: float = 0.0      # planner-marketing (per druk)
     fulfillment: float = 0.0            # alleen webshop
     distributie_cb: float = 0.0         # alleen retail
     b2b_porto: float = 0.0              # alleen B2B
@@ -275,6 +276,7 @@ class DrukResultaat:
     cumulatief_voor_druk: int = 0
     kosten_totaal: float = 0.0          # som van alle kostenposten in deze druk
     drukkosten_totaal: float = 0.0      # drukkosten_per_ex * oplage
+    marketing_marge_totaal: float = 0.0 # Σ marge_kost van marketing_onderdelen (deze druk)
     webshop: KanaalResultaat = None
     retail: KanaalResultaat = None
     b2b: KanaalResultaat = None
@@ -461,23 +463,21 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
     res = CalculatieResultaat(titel=t.titel)
     cumulatief = 0
 
-    # Marketing-planner: Σ max(toegewezen, committed, besteed). Deze kost
-    # hangt aan de eerste (launch-)druk, uitgesmeerd over die oplage.
-    marketing_marge_totaal = sum(o.marge_kost() for o in (t.marketing_onderdelen or []))
-
     # Drukken altijd op druknummer verwerken: de royalty-staffel loopt
     # cumulatief, dus de volgorde bepaalt welke staffel-trede elke druk pakt.
     # Zo klopt de per-druk uitsplitsing ongeacht de invoervolgorde.
     drukken_gesorteerd = sorted(t.drukken, key=lambda d: d.druknummer)
 
-    for i, druk_cfg in enumerate(drukken_gesorteerd):
+    for druk_cfg in drukken_gesorteerd:
         oplage = druk_cfg.oplage
         kosten_totaal = sum(kp.bedrag for kp in druk_cfg.kostenposten)
         kosten_per_ex = kosten_totaal / oplage if oplage > 0 else 0.0
 
-        marketing_per_ex = (
-            marketing_marge_totaal / oplage if (i == 0 and oplage > 0) else 0.0
+        # Marketing-planner per druk: Σ marge_kost, uitgesmeerd over díe oplage.
+        marketing_marge_totaal = sum(
+            o.marge_kost() for o in (druk_cfg.marketing_onderdelen or [])
         )
+        marketing_per_ex = marketing_marge_totaal / oplage if oplage > 0 else 0.0
 
         druk = DrukResultaat(
             druk_type=f"{druk_cfg.druknummer}e druk",
@@ -485,6 +485,7 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
             cumulatief_voor_druk=cumulatief,
             kosten_totaal=kosten_totaal,
             drukkosten_totaal=druk_cfg.drukkosten_per_ex * oplage,
+            marketing_marge_totaal=marketing_marge_totaal,
         )
         # CAC: nieuwe locatie is per druk; valt terug op titel-level voor
         # backward compat met oude data die nog niet gemigreerd is.
