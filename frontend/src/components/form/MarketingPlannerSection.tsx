@@ -83,7 +83,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
       {/* Dun balkje: oranje = committed+besteed, grijze track = te besteden */}
       <div className="h-1.5 rounded-full overflow-hidden bg-[var(--border)]">
         <div
-          className="bg-amber-500 h-full transition-all"
+          className="bg-[var(--accent)] h-full transition-all"
           style={{ width: `${totToegewezen > 0 ? Math.min(100, ((totCommitted + totBesteed) / totToegewezen) * 100) : 0}%` }}
         />
       </div>
