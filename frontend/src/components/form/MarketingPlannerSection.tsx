@@ -59,6 +59,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
     { label: 'Toegewezen', val: totToegewezen, warn: false },
     { label: 'Committed', val: totCommitted, warn: false },
     { label: 'Besteed', val: totBesteed, warn: false },
+    { label: 'Te besteden', val: teBesteden, warn: teBesteden < 0 },
   ];
 
   return (
@@ -79,31 +80,15 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
         </div>
       </div>
 
-      {/* Te besteden — prominent stuurgetal + voortgangsbalk */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5 space-y-1.5">
-        <div className="flex items-baseline justify-between">
-          <span className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Te besteden</span>
-          <span className={`text-2xl font-bold ${teBesteden < 0 ? 'text-red-500' : 'text-emerald-600'}`}>€ {euro(teBesteden)}</span>
-        </div>
-        {(() => {
-          const denom = Math.max(totToegewezen, totCommitted + totBesteed, 1);
-          const wBesteed = (totBesteed / denom) * 100;
-          const wCommitted = (totCommitted / denom) * 100;
-          const wTeBesteden = (Math.max(0, teBesteden) / denom) * 100;
-          return (
-            <div className="h-2.5 rounded-full overflow-hidden flex bg-[var(--border)]">
-              <div className="bg-slate-500 transition-all" style={{ width: `${wBesteed}%` }} title={`Besteed € ${euro(totBesteed)}`} />
-              <div className="bg-amber-400 transition-all" style={{ width: `${wCommitted}%` }} title={`Committed € ${euro(totCommitted)}`} />
-              <div className="bg-emerald-500 transition-all" style={{ width: `${wTeBesteden}%` }} title={`Te besteden € ${euro(Math.max(0, teBesteden))}`} />
-            </div>
-          );
-        })()}
-        {teBesteden < 0 && (
-          <div className="text-[10px] text-red-500 font-medium">€ {euro(-teBesteden)} over je toegewezen budget</div>
-        )}
+      {/* Dun balkje: oranje = committed+besteed, grijze track = te besteden */}
+      <div className="h-1.5 rounded-full overflow-hidden bg-[var(--border)]">
+        <div
+          className="bg-amber-500 h-full transition-all"
+          style={{ width: `${totToegewezen > 0 ? Math.min(100, ((totCommitted + totBesteed) / totToegewezen) * 100) : 0}%` }}
+        />
       </div>
 
-      <div className="grid grid-cols-3 gap-1 text-center">
+      <div className="grid grid-cols-4 gap-1 text-center">
         {samenvatting.map(s => (
           <div key={s.label} className="rounded bg-[var(--bg-secondary)] px-1 py-1.5">
             <div className="text-[9px] uppercase tracking-wide text-[var(--text-tertiary)]">{s.label}</div>
