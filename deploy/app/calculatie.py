@@ -13,6 +13,12 @@ je specificeert per druk expliciet welke kosten je maakt.
 from dataclasses import dataclass, field
 
 
+# Vaste id van het "Ad-spend"-onderdeel: de kost hiervan wordt niet in de
+# all-channels marketing_per_ex meegeteld, maar via cac_per_ex toegerekend
+# aan de webshop (zie bereken_titel hieronder).
+AD_SPEND_ID = "ad_spend"
+
+
 # ──────────────────────────────────────────────────────────────────────
 #  DATA MODEL
 # ──────────────────────────────────────────────────────────────────────
@@ -37,10 +43,10 @@ class KostenPost:
 class MarketingOnderdeel:
     """Eén onderdeel in de marketing-budgetplanner, PER DRUK.
 
-    Encumbrance-model: committed (vastgelegd, onbetaald) en besteed (betaald)
-    zijn disjuncte, optelbare buckets — samen de werkelijke belasting van het
-    budget. Toegewezen (het plan) is de ondergrens: leg je + betaal je meer
-    vast dan gepland, dan telt dat mee in de marge.
+    Toegewezen is het gealloceerde budget en dus de kost in de calculatie.
+    committed (vastgelegd, onbetaald) en besteed (betaald) zijn tracking
+    BINNEN die allocatie (de UI toont "te besteden = toegewezen − committed
+    − besteed") en veranderen de marge niet.
     """
     id: str = ""
     naam: str = ""
@@ -51,10 +57,10 @@ class MarketingOnderdeel:
     besteed: float = 0.0
 
     def marge_kost(self) -> float:
-        # Encumbrance-model: committed (vastgelegd, onbetaald) en besteed
-        # (betaald) zijn disjunct en optelbaar. Het plan (toegewezen) is de
-        # ondergrens; leg je méér vast+betaald dan gepland, dan telt dat.
-        return max(self.toegewezen, self.committed + self.besteed)
+        # Toegewezen is het gealloceerde budget en dus de kost in de calculatie.
+        # committed/besteed zijn tracking binnen die allocatie (zie "te besteden"
+        # in de UI) en veranderen de marge niet.
+        return self.toegewezen
 
 
 @dataclass
@@ -473,9 +479,13 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
         kosten_totaal = sum(kp.bedrag for kp in druk_cfg.kostenposten)
         kosten_per_ex = kosten_totaal / oplage if oplage > 0 else 0.0
 
-        # Marketing-planner per druk: Σ marge_kost, uitgesmeerd over díe oplage.
+        # Marketing-planner per druk: Σ toegewezen, uitgesmeerd over díe oplage.
+        # Ad-spend is UITGESLOTEN: die wordt webshop-toegerekend via cac_per_ex
+        # (frontend leidt cac af uit ad_spend.toegewezen). Meetellen hier zou
+        # dubbeltellen.
         marketing_marge_totaal = sum(
             o.marge_kost() for o in (druk_cfg.marketing_onderdelen or [])
+            if o.id != AD_SPEND_ID
         )
         marketing_per_ex = marketing_marge_totaal / oplage if oplage > 0 else 0.0
 

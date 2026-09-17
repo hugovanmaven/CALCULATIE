@@ -41,10 +41,11 @@ def test_migratie_bevat_alle_basis_onderdelen():
     ti = _titel_input_oud()
     _migrate_marketing(ti)
     ids = {o["id"] for o in ti["drukken"][0]["marketing_onderdelen"]}
-    for basis in ["evenement", "marketingmateriaal", "offline_campagne",
-                  "boekhandelsmateriaal", "productfotografie", "productie_ads",
-                  "software_kosten"]:
+    for basis in ["evenement", "marketingmateriaal", "boekhandelsmateriaal",
+                  "productfotografie", "productie_ads", "software_kosten",
+                  "ad_spend"]:
         assert basis in ids
+    assert "offline_campagne" not in ids
 
 
 def test_migratie_is_idempotent():

@@ -810,25 +810,34 @@ class TestSimulatieStaffel:
 #  L. MARKETING-BUDGETPLANNER (engine-laag)
 # ─────────────────────────────────────────────────────────────────────
 
-from app.calculatie import MarketingOnderdeel
+from app.calculatie import MarketingOnderdeel, AD_SPEND_ID
 
 
 class TestMarketingOnderdeel:
-    def test_marge_kost_neemt_maximum(self):
+    def test_marge_kost_is_toegewezen(self):
         o = MarketingOnderdeel(id="x", naam="X", groep="offline_marketing",
                                toegewezen=1000, committed=500, besteed=200)
         assert o.marge_kost() == pytest.approx(1000, abs=TOL)
 
-    def test_marge_kost_committed_groter(self):
-        # Encumbrance-model: committed + besteed telt op (900+100=1000),
-        # niet losse max (900). max(300, 1000) = 1000.
+    def test_marge_kost_negeert_committed_groter_dan_toegewezen(self):
+        # v3: committed/besteed zijn tracking BINNEN de allocatie en tellen
+        # niet meer op. marge_kost = toegewezen, ook als committed+besteed
+        # (900+100=1000) groter is dan toegewezen (300).
         o = MarketingOnderdeel(id="x", naam="X", toegewezen=300, committed=900, besteed=100)
-        assert o.marge_kost() == pytest.approx(1000, abs=TOL)
+        assert o.marge_kost() == pytest.approx(300, abs=TOL)
 
-    def test_marge_kost_committed_plus_besteed_onder_budget(self):
-        # committed + besteed blijft onder toegewezen → het plan (de ondergrens) geldt.
+    def test_marge_kost_negeert_committed_en_besteed_onder_budget(self):
+        # committed + besteed blijft onder toegewezen: maakt niets uit, marge = toegewezen.
         o = MarketingOnderdeel(id="x", naam="X", toegewezen=500, committed=300, besteed=300)
-        assert o.marge_kost() == pytest.approx(600, abs=TOL)
+        assert o.marge_kost() == pytest.approx(500, abs=TOL)
+
+    def test_marge_kost_ongevoelig_voor_committed_besteed(self):
+        # Expliciete regressietest: committed/besteed zijn puur tracking en
+        # mogen de marge nooit beïnvloeden, ongeacht hun waarde.
+        zonder_tracking = MarketingOnderdeel(id="x", naam="X", toegewezen=400)
+        met_tracking = MarketingOnderdeel(id="x", naam="X", toegewezen=400, committed=9999, besteed=9999)
+        assert zonder_tracking.marge_kost() == pytest.approx(400, abs=TOL)
+        assert met_tracking.marge_kost() == pytest.approx(400, abs=TOL)
 
     def test_drukconfig_heeft_marketing_defaults(self):
         d = DrukConfig(druknummer=1, oplage=2000, drukkosten_per_ex=1.0)
@@ -890,7 +899,8 @@ class TestMarketingMargeIntegratie:
             MarketingOnderdeel(id="a", naam="A", toegewezen=1000, committed=500, besteed=200),
             MarketingOnderdeel(id="b", naam="B", toegewezen=0, committed=0, besteed=600),
         ]
-        # Σ marge_kost = max(1000, 500+200)=1000 + max(0, 0+600)=600 = 1600
+        # Σ marge_kost = toegewezen: 1000 + 0 = 1000 (committed/besteed zijn
+        # tracking-only en tellen niet mee, ook al is b1's besteed=600 > 0).
         return onderdelen
 
     def _titel_met_onderdelen(self, **kw):
@@ -898,35 +908,59 @@ class TestMarketingMargeIntegratie:
         return _titel(drukken=[druk], **kw)
 
     def test_marketing_per_ex_op_druk(self):
-        # 1600 / 2000 = 0.80 per exemplaar op elk kanaal
+        # 1000 / 2000 = 0.50 per exemplaar op elk kanaal
         d = _bereken(self._titel_met_onderdelen())
-        assert d.webshop.marketing_per_ex == pytest.approx(0.80, abs=TOL)
-        assert d.retail.marketing_per_ex == pytest.approx(0.80, abs=TOL)
-        assert d.b2b.marketing_per_ex == pytest.approx(0.80, abs=TOL)
+        assert d.webshop.marketing_per_ex == pytest.approx(0.50, abs=TOL)
+        assert d.retail.marketing_per_ex == pytest.approx(0.50, abs=TOL)
+        assert d.b2b.marketing_per_ex == pytest.approx(0.50, abs=TOL)
 
     def test_marketing_verlaagt_brutowinst(self):
         basis = _bereken(_titel()).retail.brutowinst
         met = _bereken(self._titel_met_onderdelen()).retail.brutowinst
-        assert met == pytest.approx(basis - 0.80, abs=TOL)
+        assert met == pytest.approx(basis - 0.50, abs=TOL)
 
     def test_elke_druk_krijgt_eigen_marketing(self):
         from app.calculatie import DrukConfig, bereken_titel
         druk1 = _druk(druknummer=1, oplage=2000, marketing_onderdelen=[
             MarketingOnderdeel(id="a1", naam="A1", toegewezen=1000, committed=500, besteed=200),
             MarketingOnderdeel(id="b1", naam="B1", toegewezen=0, committed=0, besteed=600),
-        ])  # Σ marge_kost = 1000 + 600 = 1600 → /2000 = 0.80/ex
+        ])  # Σ marge_kost (toegewezen) = 1000 + 0 = 1000 → /2000 = 0.50/ex
         druk2 = _druk(druknummer=2, oplage=1000, marketing_onderdelen=[
             MarketingOnderdeel(id="a2", naam="A2", toegewezen=300, committed=100, besteed=100),
-        ])  # Σ marge_kost = max(300, 200) = 300 → /1000 = 0.30/ex
+        ])  # Σ marge_kost = 300 → /1000 = 0.30/ex
 
         t = _titel(drukken=[druk1, druk2])
         res = bereken_titel(t)
 
-        assert res.drukken[0].marketing_marge_totaal == pytest.approx(1600.0, abs=TOL)
-        assert res.drukken[0].webshop.marketing_per_ex == pytest.approx(0.80, abs=TOL)
+        assert res.drukken[0].marketing_marge_totaal == pytest.approx(1000.0, abs=TOL)
+        assert res.drukken[0].webshop.marketing_per_ex == pytest.approx(0.50, abs=TOL)
         assert res.drukken[1].marketing_marge_totaal == pytest.approx(300.0, abs=TOL)
         assert res.drukken[1].webshop.marketing_per_ex == pytest.approx(0.30, abs=TOL)
 
     def test_geen_onderdelen_geen_marketingkost(self):
         d = _bereken(_titel())
         assert d.retail.marketing_per_ex == pytest.approx(0.0, abs=TOL)
+
+    def test_ad_spend_uitgesloten_van_marketing_per_ex(self):
+        # Ad-spend wordt webshop-toegerekend via cac_per_ex (frontend leidt
+        # dat af uit ad_spend.toegewezen); de all-channels marketing_per_ex
+        # mag dit onderdeel dus niet meetellen, op geen enkel kanaal.
+        druk = _druk(marketing_onderdelen=[
+            MarketingOnderdeel(id=AD_SPEND_ID, naam="Ad-spend", groep="online_marketing",
+                                toegewezen=5000, committed=0, besteed=0),
+        ])
+        d = _bereken(_titel(drukken=[druk]))
+        assert d.webshop.marketing_per_ex == pytest.approx(0.0, abs=TOL)
+        assert d.retail.marketing_per_ex == pytest.approx(0.0, abs=TOL)
+        assert d.b2b.marketing_per_ex == pytest.approx(0.0, abs=TOL)
+
+    def test_ad_spend_naast_andere_onderdelen_uitgesloten(self):
+        # Ad-spend samen met een gewoon onderdeel: alleen het gewone
+        # onderdeel telt mee in marketing_per_ex.
+        druk = _druk(marketing_onderdelen=[
+            MarketingOnderdeel(id=AD_SPEND_ID, naam="Ad-spend", groep="online_marketing",
+                                toegewezen=5000, committed=0, besteed=0),
+            MarketingOnderdeel(id="a", naam="A", toegewezen=1000, committed=0, besteed=0),
+        ])
+        res_druk = _bereken(_titel(drukken=[druk]))
+        assert res_druk.webshop.marketing_per_ex == pytest.approx(0.50, abs=TOL)  # 1000/2000

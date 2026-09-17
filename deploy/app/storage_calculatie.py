@@ -102,11 +102,11 @@ _JSON_FIELDS = [
 DEFAULT_MARKETING_ONDERDELEN = [
     {"id": "evenement", "naam": "Evenement", "groep": "offline_marketing"},
     {"id": "marketingmateriaal", "naam": "Marketingmateriaal", "groep": "offline_marketing"},
-    {"id": "offline_campagne", "naam": "Offline campagne", "groep": "offline_marketing"},
     {"id": "boekhandelsmateriaal", "naam": "Boekhandelsmateriaal", "groep": "offline_marketing"},
     {"id": "productfotografie", "naam": "Productfotografie", "groep": "online_marketing"},
     {"id": "productie_ads", "naam": "Productie ads", "groep": "online_marketing"},
     {"id": "software_kosten", "naam": "Software kosten", "groep": "online_marketing"},
+    {"id": "ad_spend", "naam": "Ad-spend", "groep": "online_marketing"},
 ]
 
 
