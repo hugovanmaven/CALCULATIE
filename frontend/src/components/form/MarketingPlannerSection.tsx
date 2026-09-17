@@ -23,7 +23,9 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
   const onderdelen = druk.marketing_onderdelen ?? [];
   const budget = berekenMarketingBudget(druk, titelInput, verdeling);
   const pct = Math.round((druk.marketing_budget_pct ?? 0.08) * 100);
-  const gemiddeldeCac = berekenGemiddeldeCac(druk, verdeling);
+  // Afgeleid uit Ad-spend; is er geen ad-spend, val terug op een reeds
+  // ingevulde cac_per_ex (bestaande titels) zodat de getoonde CAC klopt.
+  const gemiddeldeCac = berekenGemiddeldeCac(druk, verdeling) || (druk.cac_per_ex ?? 0);
   const webshopVerkopen = verdeling.webshop * druk.oplage;
 
   const [open, setOpen] = useState<Set<string>>(new Set());

@@ -51,7 +51,10 @@ export function CalculatieForm({
     let changed = false;
     const next = drukken.map(d => {
       const ad = (d.marketing_onderdelen ?? []).find(o => o.id === 'ad_spend');
-      if (!ad) return d;
+      // Alleen afleiden zodra er ad-spend is toegewezen. Is Ad-spend € 0
+      // (o.a. bestaande titels), dan laten we een reeds ingevulde cac_per_ex
+      // staan i.p.v. 'm naar 0 te overschrijven.
+      if (!ad || ad.toegewezen <= 0) return d;
       const webshopVerkopen = verdeling.webshop * d.oplage;
       const derived = webshopVerkopen > 0 ? ad.toegewezen / webshopVerkopen : 0;
       if (Math.abs((d.cac_per_ex ?? 0) - derived) > 1e-6) { changed = true; return { ...d, cac_per_ex: derived }; }
