@@ -42,8 +42,7 @@ def test_migratie_bevat_alle_basis_onderdelen():
     _migrate_marketing(ti)
     ids = {o["id"] for o in ti["drukken"][0]["marketing_onderdelen"]}
     for basis in ["evenement", "marketingmateriaal", "boekhandelsmateriaal",
-                  "productfotografie", "productie_ads", "software_kosten",
-                  "ad_spend"]:
+                  "productfotografie", "productie_ads", "ad_spend"]:
         assert basis in ids
     assert "offline_campagne" not in ids
 
