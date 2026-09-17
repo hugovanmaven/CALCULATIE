@@ -269,11 +269,11 @@ export const DEFAULT_KOSTENPOSTEN: KostenPost[] = [
 export const DEFAULT_MARKETING_ONDERDELEN: MarketingOnderdeel[] = [
   { id: 'evenement', naam: 'Evenement', groep: 'offline_marketing', volgorde: 0, toegewezen: 0, committed: 0, besteed: 0 },
   { id: 'marketingmateriaal', naam: 'Marketingmateriaal', groep: 'offline_marketing', volgorde: 1, toegewezen: 0, committed: 0, besteed: 0 },
-  { id: 'offline_campagne', naam: 'Offline campagne', groep: 'offline_marketing', volgorde: 2, toegewezen: 0, committed: 0, besteed: 0 },
-  { id: 'boekhandelsmateriaal', naam: 'Boekhandelsmateriaal', groep: 'offline_marketing', volgorde: 3, toegewezen: 0, committed: 0, besteed: 0 },
-  { id: 'productfotografie', naam: 'Productfotografie', groep: 'online_marketing', volgorde: 4, toegewezen: 0, committed: 0, besteed: 0 },
-  { id: 'productie_ads', naam: 'Productie ads', groep: 'online_marketing', volgorde: 5, toegewezen: 0, committed: 0, besteed: 0 },
-  { id: 'software_kosten', naam: 'Software kosten', groep: 'online_marketing', volgorde: 6, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'boekhandelsmateriaal', naam: 'Boekhandelsmateriaal', groep: 'offline_marketing', volgorde: 2, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'productfotografie', naam: 'Productfotografie', groep: 'online_marketing', volgorde: 3, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'productie_ads', naam: 'Productie ads', groep: 'online_marketing', volgorde: 4, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'software_kosten', naam: 'Software kosten', groep: 'online_marketing', volgorde: 5, toegewezen: 0, committed: 0, besteed: 0 },
+  { id: 'ad_spend', naam: 'Ad-spend', groep: 'online_marketing', volgorde: 6, toegewezen: 0, committed: 0, besteed: 0 },
 ];
 
 export const DEFAULT_DRUK: DrukConfig = {

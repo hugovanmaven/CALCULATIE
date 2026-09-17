@@ -13,9 +13,19 @@ export function berekenMarketingBudget(druk: DrukConfig, t: TitelInput, v: Verde
 }
 
 export function margeKost(o: MarketingOnderdeel): number {
-  return Math.max(o.toegewezen, o.committed + o.besteed);
+  return o.toegewezen;
 }
 
 export function generateOnderdeelId(): string {
   return 'custom_' + Math.random().toString(36).slice(2, 9);
+}
+
+export const AD_SPEND_ID = 'ad_spend';
+
+/** Afgeleide gemiddelde CAC op basis van ad-spend toegewezen budget / webshop-verkopen. */
+export function berekenGemiddeldeCac(druk: DrukConfig, v: Verdeling): number {
+  const ad = (druk.marketing_onderdelen ?? []).find(o => o.id === AD_SPEND_ID);
+  const webshopVerkopen = v.webshop * druk.oplage;
+  if (!ad || webshopVerkopen <= 0) return 0;
+  return ad.toegewezen / webshopVerkopen;
 }

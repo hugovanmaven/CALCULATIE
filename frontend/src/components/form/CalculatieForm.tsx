@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { TitelInput, DrukConfig } from '../../api/types';
 import { Section } from '../layout/Section';
 import { BasisgegevensSection } from './BasisgegevensSection';
@@ -43,6 +44,21 @@ export function CalculatieForm({
   const updateDruk = (idx: number, updated: DrukConfig) => {
     updateField('drukken', drukken.map((d, i) => (i === idx ? updated : d)));
   };
+
+  // Houd cac_per_ex per druk in sync met de afgeleide gemiddelde CAC (ad-spend / webshop-verkopen),
+  // zodat de engine/marge (die cac_per_ex op het webshop-kanaal leest) klopt.
+  useEffect(() => {
+    let changed = false;
+    const next = drukken.map(d => {
+      const ad = (d.marketing_onderdelen ?? []).find(o => o.id === 'ad_spend');
+      if (!ad) return d;
+      const webshopVerkopen = verdeling.webshop * d.oplage;
+      const derived = webshopVerkopen > 0 ? ad.toegewezen / webshopVerkopen : 0;
+      if (Math.abs((d.cac_per_ex ?? 0) - derived) > 1e-6) { changed = true; return { ...d, cac_per_ex: derived }; }
+      return d;
+    });
+    if (changed) updateField('drukken', next);
+  }, [drukken, verdeling]);
 
   return (
     <div className="space-y-1">

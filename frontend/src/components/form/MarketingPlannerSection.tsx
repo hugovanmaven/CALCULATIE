@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { TitelInput, DrukConfig, MarketingOnderdeel } from '../../api/types';
-import { berekenMarketingBudget, generateOnderdeelId, type Verdeling } from '../../lib/marketing';
+import { berekenMarketingBudget, berekenGemiddeldeCac, generateOnderdeelId, AD_SPEND_ID, type Verdeling } from '../../lib/marketing';
 import { Plus, X, ChevronRight, ChevronDown } from 'lucide-react';
 
 interface Props {
@@ -23,8 +23,8 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
   const onderdelen = druk.marketing_onderdelen ?? [];
   const budget = berekenMarketingBudget(druk, titelInput, verdeling);
   const pct = Math.round((druk.marketing_budget_pct ?? 0.08) * 100);
-  const cacPerEx = druk.cac_per_ex ?? 0;
-  const cacEuro = cacPerEx * verdeling.webshop * druk.oplage;
+  const gemiddeldeCac = berekenGemiddeldeCac(druk, verdeling);
+  const webshopVerkopen = verdeling.webshop * druk.oplage;
 
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
@@ -37,7 +37,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
   const totToegewezen = onderdelen.reduce((s, o) => s + o.toegewezen, 0);
   const totCommitted = onderdelen.reduce((s, o) => s + o.committed, 0);
   const totBesteed = onderdelen.reduce((s, o) => s + o.besteed, 0);
-  const nogOver = budget - totToegewezen;
+  const teBesteden = totToegewezen - totCommitted - totBesteed;
 
   const setOnderdelen = (next: MarketingOnderdeel[]) =>
     onDrukChange({ ...druk, marketing_onderdelen: next });
@@ -59,7 +59,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
     { label: 'Toegewezen', val: totToegewezen, warn: false },
     { label: 'Committed', val: totCommitted, warn: false },
     { label: 'Besteed', val: totBesteed, warn: false },
-    { label: 'Nog over', val: nogOver, warn: nogOver < 0 },
+    { label: 'Te besteden', val: teBesteden, warn: teBesteden < 0 },
   ];
 
   return (
@@ -96,59 +96,59 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
             const isOpen = open.has(o.id);
             const verbruikt = o.committed + o.besteed;
             const over = verbruikt > o.toegewezen && o.toegewezen > 0;
+            const teBestedenRij = o.toegewezen - o.committed - o.besteed;
+            const isAdSpend = o.id === AD_SPEND_ID;
             return (
-              <div key={o.id} className="rounded border border-[var(--border)]">
-                <button type="button" onClick={() => toggle(o.id)} className="w-full flex items-center gap-2 px-2 py-1.5 text-left">
-                  {isOpen ? <ChevronDown size={14} className="text-[var(--text-tertiary)] shrink-0" /> : <ChevronRight size={14} className="text-[var(--text-tertiary)] shrink-0" />}
-                  <span className="text-sm text-[var(--text-primary)] truncate flex-1">{o.naam || 'Naamloos'}</span>
-                  <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>€ {euro(verbruikt)} / € {euro(o.toegewezen)}</span>
-                </button>
-                {isOpen && (
-                  <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
-                    <input value={o.naam} placeholder="Naam onderdeel" onChange={e => patchNaam(o.id, e.target.value)} className={numCls} />
-                    <div>
-                      <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Toegewezen</label>
-                      <div className="flex gap-1">
-                        <div className="flex items-center flex-1">
-                          <span className="text-xs text-[var(--text-tertiary)] pr-1">€</span>
-                          <input type="number" value={Math.round(o.toegewezen) || ''} step={50} onChange={e => patchNum(o.id, 'toegewezen', parseFloat(e.target.value) || 0)} className={numCls} />
-                        </div>
-                        <div className="flex items-center w-20">
-                          <input type="number" value={budget > 0 ? Math.round((o.toegewezen / budget) * 100) : 0} step={1} onChange={e => setToegewezenPct(o.id, parseFloat(e.target.value) || 0)} className={numCls} />
-                          <span className="text-xs text-[var(--text-tertiary)] pl-1">%</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
+              <div key={o.id}>
+                <div className="rounded border border-[var(--border)]">
+                  <button type="button" onClick={() => toggle(o.id)} className="w-full flex items-center gap-2 px-2 py-1.5 text-left">
+                    {isOpen ? <ChevronDown size={14} className="text-[var(--text-tertiary)] shrink-0" /> : <ChevronRight size={14} className="text-[var(--text-tertiary)] shrink-0" />}
+                    <span className="text-sm text-[var(--text-primary)] truncate flex-1">{o.naam || 'Naamloos'}</span>
+                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>€ {euro(verbruikt)} / € {euro(o.toegewezen)}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
+                      <input value={o.naam} placeholder="Naam onderdeel" onChange={e => patchNaam(o.id, e.target.value)} className={numCls} />
                       <div>
-                        <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Committed €</label>
-                        <input type="number" value={Math.round(o.committed) || ''} step={50} onChange={e => patchNum(o.id, 'committed', parseFloat(e.target.value) || 0)} className={numCls} />
+                        <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Toegewezen</label>
+                        <div className="flex gap-1">
+                          <div className="flex items-center flex-1">
+                            <span className="text-xs text-[var(--text-tertiary)] pr-1">€</span>
+                            <input type="number" value={Math.round(o.toegewezen) || ''} step={50} onChange={e => patchNum(o.id, 'toegewezen', parseFloat(e.target.value) || 0)} className={numCls} />
+                          </div>
+                          <div className="flex items-center w-20">
+                            <input type="number" value={budget > 0 ? Math.round((o.toegewezen / budget) * 100) : 0} step={1} onChange={e => setToegewezenPct(o.id, parseFloat(e.target.value) || 0)} className={numCls} />
+                            <span className="text-xs text-[var(--text-tertiary)] pl-1">%</span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Besteed €</label>
-                        <input type="number" value={Math.round(o.besteed) || ''} step={50} onChange={e => patchNum(o.id, 'besteed', parseFloat(e.target.value) || 0)} className={numCls} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Committed €</label>
+                          <input type="number" value={Math.round(o.committed) || ''} step={50} onChange={e => patchNum(o.id, 'committed', parseFloat(e.target.value) || 0)} className={numCls} />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Besteed €</label>
+                          <input type="number" value={Math.round(o.besteed) || ''} step={50} onChange={e => patchNum(o.id, 'besteed', parseFloat(e.target.value) || 0)} className={numCls} />
+                        </div>
                       </div>
+                      <div className={`text-xs ${teBestedenRij < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>
+                        Te besteden: € {euro(teBestedenRij)}
+                      </div>
+                      <button type="button" onClick={() => removeRij(o.id)} className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-red-500">
+                        <X size={12} /> verwijderen
+                      </button>
                     </div>
-                    <button type="button" onClick={() => removeRij(o.id)} className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-red-500">
-                      <X size={12} /> verwijderen
-                    </button>
+                  )}
+                </div>
+                {isAdSpend && (
+                  <div className="text-[10px] text-[var(--text-tertiary)] px-2 pt-0.5">
+                    Gemiddelde CAC ≈ {webshopVerkopen > 0 ? `€ ${gemiddeldeCac.toFixed(2)}` : '—'} per webshop-aankoop
                   </div>
                 )}
               </div>
             );
           })}
-          {groep.key === 'online_marketing' && (
-            <div className="flex items-center gap-2 px-2 py-1.5 rounded border border-dashed border-[var(--border)]">
-              <span className="text-sm text-[var(--text-secondary)] flex-1">CAC / webshop-aankoop</span>
-              <div className="flex items-center w-24">
-                <span className="text-xs text-[var(--text-tertiary)] pr-1">€</span>
-                <input type="number" value={cacPerEx || ''} step={0.5} onChange={e => onDrukChange({ ...druk, cac_per_ex: parseFloat(e.target.value) || 0 })} className={numCls} />
-              </div>
-            </div>
-          )}
-          {groep.key === 'online_marketing' && cacEuro > 0 && (
-            <div className="text-[10px] text-[var(--text-tertiary)] px-2">≈ € {euro(cacEuro)} bij deze oplage (informatief, telt niet in de totalen)</div>
-          )}
           <button type="button" onClick={() => addRij(groep.key)} className="flex items-center gap-1 text-xs text-[var(--accent)] hover:underline mt-0.5 px-2">
             <Plus size={12} /> onderdeel
           </button>
