@@ -45,8 +45,6 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
     setOnderdelen(onderdelen.map(o => (o.id === id ? { ...o, [veld]: waarde } : o)));
   const patchNaam = (id: string, naam: string) =>
     setOnderdelen(onderdelen.map(o => (o.id === id ? { ...o, naam } : o)));
-  const setToegewezenPct = (id: string, p: number) =>
-    patchNum(id, 'toegewezen', budget > 0 ? (p / 100) * budget : 0);
   const addRij = (groep: MarketingOnderdeel['groep']) =>
     setOnderdelen([...onderdelen, {
       id: generateOnderdeelId(), naam: '', groep,
@@ -118,16 +116,10 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                     <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
                       <input value={o.naam} placeholder="Naam onderdeel" onChange={e => patchNaam(o.id, e.target.value)} className={numCls} />
                       <div>
-                        <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Toegewezen</label>
-                        <div className="flex gap-1">
-                          <div className="flex items-center flex-1">
-                            <span className="text-xs text-[var(--text-tertiary)] pr-1">€</span>
-                            <input type="number" value={Math.round(o.toegewezen) || ''} step={50} onChange={e => patchNum(o.id, 'toegewezen', parseFloat(e.target.value) || 0)} className={numCls} />
-                          </div>
-                          <div className="flex items-center w-20">
-                            <input type="number" value={budget > 0 ? Math.round((o.toegewezen / budget) * 100) : 0} step={1} onChange={e => setToegewezenPct(o.id, parseFloat(e.target.value) || 0)} className={numCls} />
-                            <span className="text-xs text-[var(--text-tertiary)] pl-1">%</span>
-                          </div>
+                        <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Toegewezen €</label>
+                        <div className="flex items-center">
+                          <span className="text-xs text-[var(--text-tertiary)] pr-1">€</span>
+                          <input type="number" value={Math.round(o.toegewezen) || ''} step={50} onChange={e => patchNum(o.id, 'toegewezen', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
