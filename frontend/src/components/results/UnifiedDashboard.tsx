@@ -283,16 +283,9 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
   const sens = cacSens[cacSens.length - 1];
   if (!sens || !sens.rows.length) return null;
 
-  // Dynamic range centered on currentCac, step size depends on magnitude
-  const step = currentCac <= 4 ? 1 : currentCac <= 10 ? 2 : 3;
-  const numTiles = 6;
-  const halfRange = Math.floor(numTiles / 2) * step;
-  const startCac = Math.max(0, Math.round((currentCac - halfRange) / step) * step);
-  const cacLevels = Array.from({ length: numTiles }, (_, i) => startCac + i * step);
-
-  const keyRows = cacLevels
-    .map(v => sens.rows.find(r => Math.abs(r.variable_value - v) < 0.01))
-    .filter((r): r is NonNullable<typeof r> => r != null);
+  // Toon de volledige CAC-reeks (€0 → €10) die de sensitivity teruggaf,
+  // horizontaal scrollbaar, in dezelfde tegel-opmaak.
+  const keyRows = [...sens.rows].sort((a, b) => a.variable_value - b.variable_value);
 
   if (keyRows.length === 0) return null;
 
@@ -302,7 +295,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
         CAC bandbreedte <span className="font-normal text-[var(--text-tertiary)]">({sens.druk_type ?? 'webshop'})</span>
       </h3>
       <p className="text-xs text-[var(--text-tertiary)] mb-3">Kosten om 1 klant te werven via online ads</p>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {keyRows.map((row, i) => {
           const isCurrent = Math.abs(row.variable_value - currentCac) < 0.01;
           const marge = row.webshop_marge_pct;
@@ -310,7 +303,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
             : marge >= 0.20 ? 'bg-amber-500'
             : 'bg-red-400';
           return (
-            <div key={i} className={`rounded-lg overflow-hidden ${
+            <div key={i} className={`shrink-0 w-24 rounded-lg overflow-hidden ${
               isCurrent ? 'ring-1 ring-[var(--accent)]/40' : ''
             }`}>
               {/* Colored top stripe — scannable at a glance */}

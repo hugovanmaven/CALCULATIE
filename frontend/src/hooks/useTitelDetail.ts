@@ -184,7 +184,7 @@ export function useTitelDetail(titelId: string | null) {
     try {
       const [calcResult, cacResult, priceResult, oplageResult] = await Promise.all([
         calculate(req),
-        sensitivityCac(req),
+        sensitivityCac({ ...req, cac_range: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }),
         sensitivityPrice(req),
         simulateOplage(req),
       ]);
