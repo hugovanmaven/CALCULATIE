@@ -283,9 +283,11 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
   const sens = cacSens[cacSens.length - 1];
   if (!sens || !sens.rows.length) return null;
 
-  // Toon de volledige CAC-reeks (€0 → €10) die de sensitivity teruggaf,
-  // horizontaal scrollbaar, in dezelfde tegel-opmaak.
-  const keyRows = [...sens.rows].sort((a, b) => a.variable_value - b.variable_value);
+  // Tel per euro op vanaf €0 en stop zodra er geen geld meer verdiend wordt
+  // (webshop-winst/ex ≤ 0). Horizontaal scrollbaar; ~5 tegels tegelijk zichtbaar.
+  const sorted = [...sens.rows].sort((a, b) => a.variable_value - b.variable_value);
+  const cutoff = sorted.findIndex(r => r.webshop_winst <= 0);
+  const keyRows = cutoff === -1 ? sorted : sorted.slice(0, cutoff + 1);
 
   if (keyRows.length === 0) return null;
 
@@ -303,7 +305,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
             : marge >= 0.20 ? 'bg-amber-500'
             : 'bg-red-400';
           return (
-            <div key={i} className={`shrink-0 w-24 rounded-lg overflow-hidden ${
+            <div key={i} className={`shrink-0 basis-[calc((100%-2rem)/5)] rounded-lg overflow-hidden ${
               isCurrent ? 'ring-1 ring-[var(--accent)]/40' : ''
             }`}>
               {/* Colored top stripe — scannable at a glance */}
