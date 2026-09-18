@@ -305,7 +305,7 @@ function CacBandbreedte({ cacSens, currentCac }: { cacSens: SensitivityResponse[
             : marge >= 0.20 ? 'bg-amber-500'
             : 'bg-red-400';
           return (
-            <div key={i} className={`shrink-0 basis-[calc((100%-2rem)/5)] rounded-lg overflow-hidden ${
+            <div key={i} className={`shrink-0 basis-[calc((100%-2.5rem)/6)] rounded-lg overflow-hidden ${
               isCurrent ? 'ring-1 ring-[var(--accent)]/40' : ''
             }`}>
               {/* Colored top stripe — scannable at a glance */}
