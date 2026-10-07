@@ -58,6 +58,49 @@ def test_run_calculation_cac_euro():
     assert out["drukken"][0]["marketing_cac_euro"] == pytest.approx(1000.0, abs=TOL)
 
 
+def test_run_calculation_marketing_meerdere_drukken():
+    """Marketing is nu één aggregaat voor de titel: budget en marge gebruiken
+    de TOTALE oplage van alle drukken, maar alleen de onderdelen (en pct) van
+    de EERSTE druk tellen mee. Een tweede druk mag niet meedoen met z'n eigen
+    marketing_onderdelen."""
+    data = _payload()
+    data["titel_input"]["drukken"].append({
+        "druknummer": 2, "oplage": 1000, "drukkosten_per_ex": 1.0,
+        "marketing_onderdelen": [
+            {"id": "x", "naam": "Genegeerd (2e druk)", "groep": "offline_marketing",
+             "toegewezen": 99999, "committed": 0, "besteed": 0},
+        ],
+    })
+    out = run_calculation(data)
+
+    # pct (0.08) komt van de eerste druk; oplage = 2000 + 1000 = 3000, retail-only:
+    # budget = 0.08 * 3000 * 5.20 = 1248
+    assert out["marketing_budget"] == pytest.approx(1248.0, abs=TOL)
+    # marge-totaal komt alléén van de eerste druk's onderdelen (1000), de
+    # 99999 op de tweede druk telt niet mee.
+    assert out["marketing_marge_totaal"] == pytest.approx(1000.0, abs=TOL)
+    # Beide drukken tonen hetzelfde titel-aggregaat.
+    assert out["drukken"][0]["marketing_budget"] == pytest.approx(1248.0, abs=TOL)
+    assert out["drukken"][1]["marketing_budget"] == pytest.approx(1248.0, abs=TOL)
+    assert out["drukken"][0]["marketing_marge_totaal"] == pytest.approx(1000.0, abs=TOL)
+    assert out["drukken"][1]["marketing_marge_totaal"] == pytest.approx(1000.0, abs=TOL)
+
+
+def test_run_calculation_cac_euro_meerdere_drukken():
+    """CAC-€-equivalent gebruikt de cac van de EERSTE druk en de TOTALE
+    oplage; de cac op een latere druk telt niet mee."""
+    data = _payload()
+    data["titel_input"]["drukken"][0]["cac_per_ex"] = 2.0
+    data["titel_input"]["drukken"].append({
+        "druknummer": 2, "oplage": 1000, "drukkosten_per_ex": 1.0, "cac_per_ex": 99.0,
+    })
+    data["verdeling_webshop"] = 0.25
+    data["verdeling_retail"] = 0.75
+    out = run_calculation(data)
+    # cac_euro = 2.0 (eerste druk) * 0.25 * 3000 (totale oplage) = 1500
+    assert out["marketing_cac_euro"] == pytest.approx(1500.0, abs=TOL)
+
+
 def test_run_calculation_negeert_marketing_kostenposten_dubbeltelling():
     """Marketing leeft in marketing_onderdelen. Een niet-gemigreerde
     titel_input (bv. via de MCP what-if 'bereken'-route) kan nog een

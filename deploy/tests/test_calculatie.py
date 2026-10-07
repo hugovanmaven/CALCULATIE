@@ -853,44 +853,50 @@ class TestMarketingBudget:
         # vkp_ex=10, retail_basis = 10 - 10*0.48 = 5.20
         # budget = 0.08 * 2000 * 5.20 = 832
         t = _titel()
-        druk = _druk()
-        b = bereken_marketing_budget(t, druk, verdeling_webshop=0, verdeling_retail=1, verdeling_b2b=0)
+        b = bereken_marketing_budget(t, verdeling_webshop=0, verdeling_retail=1, verdeling_b2b=0)
         assert b == pytest.approx(832.0, abs=1e-2)
 
     def test_webshop_only(self):
         # webshop_basis = 10 - 4.50 - 10.90*0.002 = 5.4782
         # budget = 0.08 * 2000 * 5.4782 = 876.512
         t = _titel()
-        druk = _druk()
-        b = bereken_marketing_budget(t, druk, verdeling_webshop=1, verdeling_retail=0, verdeling_b2b=0)
+        b = bereken_marketing_budget(t, verdeling_webshop=1, verdeling_retail=0, verdeling_b2b=0)
         assert b == pytest.approx(876.512, abs=1e-2)
 
     def test_b2b_only_met_korting_en_porto(self):
         # b2b_basis = 10 - 10*0.20 - 0.50 = 7.50
         # budget = 0.08 * 2000 * 7.50 = 1200
         t = _titel(b2b_korting_pct=0.20, b2b_porto_per_ex=0.50)
-        druk = _druk()
-        b = bereken_marketing_budget(t, druk, verdeling_webshop=0, verdeling_retail=0, verdeling_b2b=1)
+        b = bereken_marketing_budget(t, verdeling_webshop=0, verdeling_retail=0, verdeling_b2b=1)
         assert b == pytest.approx(1200.0, abs=1e-2)
 
     def test_pct_aanpasbaar(self):
-        t = _titel()
-        druk = _druk(marketing_budget_pct=0.10)
-        b = bereken_marketing_budget(t, druk, 0, 1, 0)
+        # pct komt van de EERSTE druk.
+        t = _titel(drukken=[_druk(marketing_budget_pct=0.10)])
+        b = bereken_marketing_budget(t, 0, 1, 0)
         # 0.10 * 2000 * 5.20 = 1040
         assert b == pytest.approx(1040.0, abs=1e-2)
 
-    def test_gebruikt_oplage_van_meegegeven_druk(self):
-        t = _titel()
-        druk = _druk(oplage=1000)
+    def test_gebruikt_totale_oplage_van_alle_drukken(self):
+        t = _titel(drukken=[_druk(oplage=1000)])
         # 0.08*1000*5.20 = 416
-        b = bereken_marketing_budget(t, druk, 0, 1, 0)
+        b = bereken_marketing_budget(t, 0, 1, 0)
         assert b == pytest.approx(416.0, abs=1e-2)
 
     def test_oplage_nul_geeft_nul(self):
-        t = _titel()
-        druk = _druk(oplage=0)
-        assert bereken_marketing_budget(t, druk, 0, 1, 0) == pytest.approx(0.0, abs=TOL)
+        t = _titel(drukken=[_druk(oplage=0)])
+        assert bereken_marketing_budget(t, 0, 1, 0) == pytest.approx(0.0, abs=TOL)
+
+    def test_meerdere_drukken_telt_totale_oplage_op(self):
+        # Budget is nu ÉÉN aggregaat voor de titel: pct van de eerste druk
+        # (0.08), maar oplage = SOM van alle drukken (2000 + 1000 = 3000).
+        # budget = 0.08 * 3000 * 5.20 = 1248
+        t = _titel(drukken=[
+            _druk(druknummer=1, oplage=2000, marketing_budget_pct=0.08),
+            _druk(druknummer=2, oplage=1000, marketing_budget_pct=0.08),
+        ])
+        b = bereken_marketing_budget(t, 0, 1, 0)
+        assert b == pytest.approx(1248.0, abs=1e-2)
 
 
 class TestMarketingMargeIntegratie:
@@ -919,23 +925,34 @@ class TestMarketingMargeIntegratie:
         met = _bereken(self._titel_met_onderdelen()).retail.brutowinst
         assert met == pytest.approx(basis - 0.50, abs=TOL)
 
-    def test_elke_druk_krijgt_eigen_marketing(self):
+    def test_marketing_uniform_over_alle_drukken(self):
+        # Marketing is nu ÉÉN aggregaat voor de hele titel: de onderdelen op
+        # de EERSTE druk bepalen de totale marketingkost, die vervolgens
+        # uniform wordt uitgesmeerd over de TOTALE oplage van alle drukken.
         from app.calculatie import DrukConfig, bereken_titel
         druk1 = _druk(druknummer=1, oplage=2000, marketing_onderdelen=[
             MarketingOnderdeel(id="a1", naam="A1", toegewezen=1000, committed=500, besteed=200),
-            MarketingOnderdeel(id="b1", naam="B1", toegewezen=0, committed=0, besteed=600),
-        ])  # Σ marge_kost (toegewezen) = 1000 + 0 = 1000 → /2000 = 0.50/ex
-        druk2 = _druk(druknummer=2, oplage=1000, marketing_onderdelen=[
-            MarketingOnderdeel(id="a2", naam="A2", toegewezen=300, committed=100, besteed=100),
-        ])  # Σ marge_kost = 300 → /1000 = 0.30/ex
+            MarketingOnderdeel(id="b1", naam="B1", toegewezen=600, committed=0, besteed=600),
+        ])  # Σ marge_kost (toegewezen) = 1000 + 600 = 1600
+        druk2 = _druk(druknummer=2, oplage=2000, marketing_onderdelen=[
+            # Onderdelen op latere drukken worden genegeerd (alleen de eerste
+            # druk is bron van waarheid).
+            MarketingOnderdeel(id="a2", naam="A2", toegewezen=99999),
+        ])
 
         t = _titel(drukken=[druk1, druk2])
         res = bereken_titel(t)
 
-        assert res.drukken[0].marketing_marge_totaal == pytest.approx(1000.0, abs=TOL)
-        assert res.drukken[0].webshop.marketing_per_ex == pytest.approx(0.50, abs=TOL)
-        assert res.drukken[1].marketing_marge_totaal == pytest.approx(300.0, abs=TOL)
-        assert res.drukken[1].webshop.marketing_per_ex == pytest.approx(0.30, abs=TOL)
+        # Totale oplage = 2000 + 2000 = 4000 → marketing_per_ex = 1600/4000 = 0.40
+        # op BEIDE drukken, elk kanaal.
+        assert res.drukken[0].marketing_marge_totaal == pytest.approx(1600.0, abs=TOL)
+        assert res.drukken[1].marketing_marge_totaal == pytest.approx(1600.0, abs=TOL)
+        assert res.drukken[0].webshop.marketing_per_ex == pytest.approx(0.40, abs=TOL)
+        assert res.drukken[0].retail.marketing_per_ex == pytest.approx(0.40, abs=TOL)
+        assert res.drukken[0].b2b.marketing_per_ex == pytest.approx(0.40, abs=TOL)
+        assert res.drukken[1].webshop.marketing_per_ex == pytest.approx(0.40, abs=TOL)
+        assert res.drukken[1].retail.marketing_per_ex == pytest.approx(0.40, abs=TOL)
+        assert res.drukken[1].b2b.marketing_per_ex == pytest.approx(0.40, abs=TOL)
 
     def test_geen_onderdelen_geen_marketingkost(self):
         d = _bereken(_titel())

@@ -73,8 +73,12 @@ class DrukConfig:
     # CAC per druk: gemiddelde online-ad-uitgave per webshop-aankoop voor
     # deze druk. Komt vrijwel altijd uit een nieuwe campagne per druk.
     cac_per_ex: float = 0.0
-    # Marketing-budgetplanner per druk (parallel aan kostenposten): eigen
-    # budget-% en onderdelen; elke druk berekent z'n budget uit z'n eigen oplage.
+    # Marketing-budgetplanner: ÉÉN aggregaat voor de hele titel. Deze velden
+    # blijven in storage op elke DrukConfig staan (geen schema-wijziging),
+    # maar alléén de EERSTE druk (laagste druknummer) is de bron van waarheid:
+    # budget en marge worden berekend over de TOTALE oplage van alle drukken
+    # (zie bereken_marketing_budget / bereken_titel). Velden op latere drukken
+    # worden genegeerd.
     marketing_budget_pct: float = 0.08
     marketing_onderdelen: list["MarketingOnderdeel"] = field(default_factory=list)
 
@@ -203,32 +207,29 @@ def bereken_gemiddeld_staffel_percentage(
 
 def bereken_marketing_budget(
     t: TitelInput,
-    druk: "DrukConfig",
     verdeling_webshop: float,
     verdeling_retail: float,
     verdeling_b2b: float,
 ) -> float:
-    """Berekend marketingbudget voor één druk.
+    """Berekend marketingbudget voor de hele titel.
 
-    budget = druk.marketing_budget_pct × druk.oplage × Σ_kanaal ( aandeel × basis_per_ex ).
-    basis_per_ex = verkoopprijs ex btw minus wat het kanaal kost:
-      retail  : − boekhandelskorting (NIET CB-distributie)
-      webshop : − fulfillment/ex − transactiekosten/ex
-      b2b     : − b2b-korting − porto/ex
-    Prijs, kortingen en kanaalverdeling zijn titel-niveau; oplage en pct per druk.
+    budget = pct × TOTALE oplage (som over alle drukken) × Σ_kanaal(aandeel × basis_per_ex).
+    pct komt van de eerste druk (laagste druknummer). Prijs/kortingen/verdeling titel-niveau.
     """
+    if not t.drukken:
+        return 0.0
+    eerste = sorted(t.drukken, key=lambda d: d.druknummer)[0]
+    totale_oplage = sum(d.oplage for d in t.drukken)
     vkp_ex = t.verkoopprijs_incl_btw / (1 + t.btw_percentage)
     retail_basis = vkp_ex - vkp_ex * t.boekhandelskorting
-    webshop_basis = (
-        vkp_ex - t.fulfillment_per_ex - t.verkoopprijs_incl_btw * t.transactiekosten_pct
-    )
+    webshop_basis = vkp_ex - t.fulfillment_per_ex - t.verkoopprijs_incl_btw * t.transactiekosten_pct
     b2b_basis = vkp_ex - vkp_ex * t.b2b_korting_pct - t.b2b_porto_per_ex
     gewogen_basis = (
         verdeling_webshop * webshop_basis
         + verdeling_retail * retail_basis
         + verdeling_b2b * b2b_basis
     )
-    return druk.marketing_budget_pct * druk.oplage * gewogen_basis
+    return eerste.marketing_budget_pct * totale_oplage * gewogen_basis
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -282,7 +283,7 @@ class DrukResultaat:
     cumulatief_voor_druk: int = 0
     kosten_totaal: float = 0.0          # som van alle kostenposten in deze druk
     drukkosten_totaal: float = 0.0      # drukkosten_per_ex * oplage
-    marketing_marge_totaal: float = 0.0 # Σ marge_kost van marketing_onderdelen (deze druk)
+    marketing_marge_totaal: float = 0.0 # Σ marge_kost van marketing_onderdelen (titel-totaal, eerste druk)
     webshop: KanaalResultaat = None
     retail: KanaalResultaat = None
     b2b: KanaalResultaat = None
@@ -474,20 +475,28 @@ def bereken_titel(t: TitelInput) -> CalculatieResultaat:
     # Zo klopt de per-druk uitsplitsing ongeacht de invoervolgorde.
     drukken_gesorteerd = sorted(t.drukken, key=lambda d: d.druknummer)
 
+    # Marketing is nu ÉÉN aggregaat voor de hele titel: de eerste druk (laagste
+    # druknummer) is de enige bron van marketing_onderdelen, en de totale kost
+    # daarvan wordt uniform uitgesmeerd over de TOTALE oplage van alle drukken.
+    # Ad-spend is UITGESLOTEN: die wordt webshop-toegerekend via cac_per_ex
+    # (frontend leidt cac af uit ad_spend.toegewezen). Meetellen hier zou
+    # dubbeltellen.
+    totale_oplage = sum(d.oplage for d in drukken_gesorteerd)
+    eerste_onderdelen = drukken_gesorteerd[0].marketing_onderdelen if drukken_gesorteerd else []
+    marketing_marge_totaal = sum(
+        o.marge_kost() for o in (eerste_onderdelen or []) if o.id != AD_SPEND_ID
+    )
+    marketing_per_ex_uniform = marketing_marge_totaal / totale_oplage if totale_oplage > 0 else 0.0
+
     for druk_cfg in drukken_gesorteerd:
         oplage = druk_cfg.oplage
         kosten_totaal = sum(kp.bedrag for kp in druk_cfg.kostenposten)
         kosten_per_ex = kosten_totaal / oplage if oplage > 0 else 0.0
 
-        # Marketing-planner per druk: Σ toegewezen, uitgesmeerd over díe oplage.
-        # Ad-spend is UITGESLOTEN: die wordt webshop-toegerekend via cac_per_ex
-        # (frontend leidt cac af uit ad_spend.toegewezen). Meetellen hier zou
-        # dubbeltellen.
-        marketing_marge_totaal = sum(
-            o.marge_kost() for o in (druk_cfg.marketing_onderdelen or [])
-            if o.id != AD_SPEND_ID
-        )
-        marketing_per_ex = marketing_marge_totaal / oplage if oplage > 0 else 0.0
+        # Elke druk krijgt hetzelfde uniforme marketing_per_ex (zie boven):
+        # dezelfde totale marketingkost wordt gelijk uitgesmeerd over élk
+        # exemplaar van élke druk.
+        marketing_per_ex = marketing_per_ex_uniform
 
         druk = DrukResultaat(
             druk_type=f"{druk_cfg.druknummer}e druk",

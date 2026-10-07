@@ -11,7 +11,7 @@ from flask import Blueprint, request, jsonify, Response, abort
 
 from ..calculatie import (
     TitelInput, StaffelTrede, KostenPost, DrukConfig, ExtraDerde,
-    MarketingOnderdeel, bereken_marketing_budget,
+    MarketingOnderdeel, bereken_marketing_budget, AD_SPEND_ID,
     bereken_titel, bereken_gemiddeld_staffel_percentage,
     KanaalResultaat, DrukResultaat, CalculatieResultaat,
 )
@@ -187,34 +187,33 @@ def run_calculation(data: dict) -> dict:
 
     res = bereken_titel(t)
 
-    # Marketing leeft nu per druk. res.drukken is gesorteerd op druknummer
-    # (zie bereken_titel), dus zip met de zelfde sortering van t.drukken
-    # geeft de juiste DrukConfig bij elk DrukResultaat.
-    drukken_cfg_gesorteerd = sorted(t.drukken, key=lambda d: d.druknummer)
+    # Marketing is nu ÉÉN aggregaat voor de hele titel: budget en marge worden
+    # titel-breed berekend (over de TOTALE oplage, uit de EERSTE druk). Elke
+    # druk toont hetzelfde titel-aggregaat (zie ook bereken_titel).
+    drukken_gesorteerd = sorted(t.drukken, key=lambda d: d.druknummer)
+    totale_oplage = sum(d.oplage for d in drukken_gesorteerd)
+    eerste = drukken_gesorteerd[0] if drukken_gesorteerd else None
+
+    marketing_budget = bereken_marketing_budget(t, verd_ws, verd_rt, verd_b2b)
+    marketing_marge_totaal = sum(
+        o.marge_kost() for o in ((eerste.marketing_onderdelen if eerste else []) or [])
+        if o.id != AD_SPEND_ID
+    )
+    # CAC-€-equivalent (informatief, telt NIET in de kolomtotalen): cac van de
+    # eerste druk (valt terug op titel-level) × verwachte webshop-verkopen
+    # over de TOTALE oplage.
+    eerste_cac = (eerste.cac_per_ex if eerste and eerste.cac_per_ex else t.cac_per_ex)
+    marketing_cac_euro = eerste_cac * verd_ws * totale_oplage
 
     drukken_out = []
-    marketing_budget = 0.0
-    marketing_marge_totaal = 0.0
-    marketing_cac_euro = 0.0
-    for d, druk_cfg in zip(res.drukken, drukken_cfg_gesorteerd):
-        druk_marketing_budget = bereken_marketing_budget(t, druk_cfg, verd_ws, verd_rt, verd_b2b)
-        druk_marketing_marge_totaal = d.marketing_marge_totaal
-        # CAC-€-equivalent (informatief, telt NIET in de kolomtotalen):
-        # cac van déze druk × verwachte webshop-verkopen van díe oplage.
-        druk_cac = druk_cfg.cac_per_ex if druk_cfg.cac_per_ex else t.cac_per_ex
-        druk_marketing_cac_euro = druk_cac * verd_ws * druk_cfg.oplage
-
-        marketing_budget += druk_marketing_budget
-        marketing_marge_totaal += druk_marketing_marge_totaal
-        marketing_cac_euro += druk_marketing_cac_euro
-
+    for d in res.drukken:
         drukken_out.append({
             **druk_to_dict(d, verd_ws, verd_rt, verd_b2b),
             "kosten_totaal": d.kosten_totaal,
             "drukkosten_totaal": d.drukkosten_totaal,
-            "marketing_budget": druk_marketing_budget,
-            "marketing_marge_totaal": druk_marketing_marge_totaal,
-            "marketing_cac_euro": druk_marketing_cac_euro,
+            "marketing_budget": marketing_budget,
+            "marketing_marge_totaal": marketing_marge_totaal,
+            "marketing_cac_euro": marketing_cac_euro,
         })
 
     # Gewogen marge over ALLE drukken: som euro-winst / som euro-omzet,
@@ -228,7 +227,7 @@ def run_calculation(data: dict) -> dict:
         "drukken": drukken_out,
         "gewogen_marge_pct_totaal": marge_totaal,
         "totaal_oplage": sum(d["oplage"] for d in drukken_out),
-        # Backward compat: som over alle drukken.
+        # Titel-aggregaat: één marketing voor de hele titel (zie boven).
         "marketing_budget": marketing_budget,
         "marketing_marge_totaal": marketing_marge_totaal,
         "marketing_cac_euro": marketing_cac_euro,
