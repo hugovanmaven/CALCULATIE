@@ -21,12 +21,13 @@ function euro(n: number): string {
 
 export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdeling }: Props) {
   const onderdelen = druk.marketing_onderdelen ?? [];
-  const budget = berekenMarketingBudget(druk, titelInput, verdeling);
+  const budget = berekenMarketingBudget(titelInput, verdeling);
   const pct = Math.round((druk.marketing_budget_pct ?? 0.08) * 100);
   // Afgeleid uit Ad-spend; is er geen ad-spend, val terug op een reeds
   // ingevulde cac_per_ex (bestaande titels) zodat de getoonde CAC klopt.
-  const gemiddeldeCac = berekenGemiddeldeCac(druk, verdeling) || (druk.cac_per_ex ?? 0);
-  const webshopVerkopen = verdeling.webshop * druk.oplage;
+  const gemiddeldeCac = berekenGemiddeldeCac(titelInput, verdeling) || (druk.cac_per_ex ?? 0);
+  const totaleOplage = titelInput.drukken.reduce((s, d) => s + d.oplage, 0);
+  const webshopVerkopen = verdeling.webshop * totaleOplage;
 
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
@@ -39,7 +40,6 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
   const totToegewezen = onderdelen.reduce((s, o) => s + o.toegewezen, 0);
   const totCommitted = onderdelen.reduce((s, o) => s + o.committed, 0);
   const totBesteed = onderdelen.reduce((s, o) => s + o.besteed, 0);
-  const teBesteden = totToegewezen - totCommitted - totBesteed;
 
   const setOnderdelen = (next: MarketingOnderdeel[]) =>
     onDrukChange({ ...druk, marketing_onderdelen: next });
@@ -55,12 +55,6 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
   const removeRij = (id: string) => setOnderdelen(onderdelen.filter(o => o.id !== id));
 
   const numCls = "w-full px-2 py-1 text-sm border border-[var(--border)] rounded bg-[var(--bg-primary)] text-[var(--text-primary)] focus:ring-1 focus:ring-[var(--accent)]/30 focus:border-[var(--accent)] outline-none";
-  const samenvatting = [
-    { label: 'Toegewezen', val: totToegewezen, warn: false },
-    { label: 'Committed', val: totCommitted, warn: false },
-    { label: 'Besteed', val: totBesteed, warn: false },
-    { label: 'Te besteden', val: teBesteden, warn: teBesteden < 0 },
-  ];
 
   return (
     <div className="space-y-3">
@@ -80,22 +74,44 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
         </div>
       </div>
 
-      {/* Dun balkje: oranje = committed+besteed, grijze track = te besteden */}
-      <div className="h-1.5 rounded-full overflow-hidden bg-[var(--border)]">
-        <div
-          className="bg-[var(--accent)] h-full transition-all"
-          style={{ width: `${totToegewezen > 0 ? Math.min(100, ((totCommitted + totBesteed) / totToegewezen) * 100) : 0}%` }}
-        />
-      </div>
-
-      <div className="grid grid-cols-4 gap-1 text-center">
-        {samenvatting.map(s => (
-          <div key={s.label} className="rounded bg-[var(--bg-secondary)] px-1 py-1.5">
-            <div className="text-[9px] uppercase tracking-wide text-[var(--text-tertiary)]">{s.label}</div>
-            <div className={`text-xs font-semibold ${s.warn ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>€ {euro(s.val)}</div>
+      {/* Trechter: budget → toegewezen → committed → besteed */}
+      {(() => {
+        const nogToeTeWijzen = budget - totToegewezen;
+        const toegewezenNietBesteed = totToegewezen - totBesteed;
+        const totaalNogUitTeGeven = budget - totBesteed;
+        const base = Math.max(budget, totToegewezen, 1);
+        const wBesteed = (totBesteed / base) * 100;
+        const wCommitted = (Math.max(0, totCommitted - totBesteed) / base) * 100;
+        const wToegewezen = (Math.max(0, totToegewezen - totCommitted) / base) * 100;
+        const stat = [
+          { label: 'Nog toe te wijzen', val: nogToeTeWijzen },
+          { label: 'Toegewezen, nog niet besteed', val: toegewezenNietBesteed },
+          { label: 'Totaal nog uit te geven', val: totaalNogUitTeGeven },
+        ];
+        return (
+          <div className="space-y-2">
+            <div className="h-2.5 rounded-full overflow-hidden flex bg-[var(--border)]">
+              <div className="h-full" style={{ width: `${wBesteed}%`, backgroundColor: 'var(--accent)' }} title={`Besteed € ${euro(totBesteed)}`} />
+              <div className="h-full" style={{ width: `${wCommitted}%`, backgroundColor: 'var(--accent)', opacity: 0.6 }} title={`Toegezegd, nog te betalen € ${euro(Math.max(0, totCommitted - totBesteed))}`} />
+              <div className="h-full" style={{ width: `${wToegewezen}%`, backgroundColor: 'var(--accent)', opacity: 0.3 }} title={`Toegewezen, nog niet toegezegd € ${euro(Math.max(0, totToegewezen - totCommitted))}`} />
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[var(--text-tertiary)]">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)' }} /> Besteed € {euro(totBesteed)}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)', opacity: 0.6 }} /> Committed € {euro(totCommitted)}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)', opacity: 0.3 }} /> Toegewezen € {euro(totToegewezen)}</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[var(--border)] inline-block" /> Vrij € {euro(Math.max(0, nogToeTeWijzen))}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-center pt-1">
+              {stat.map(s => (
+                <div key={s.label} className="rounded bg-[var(--bg-secondary)] px-1 py-1.5">
+                  <div className="text-[9px] uppercase tracking-wide text-[var(--text-tertiary)] leading-tight">{s.label}</div>
+                  <div className={`text-xs font-semibold ${s.val < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>€ {euro(s.val)}</div>
+                </div>
+              ))}
+            </div>
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       {GROEPEN.map(groep => (
         <div key={groep.key} className="space-y-1">

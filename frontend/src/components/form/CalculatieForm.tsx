@@ -45,18 +45,27 @@ export function CalculatieForm({
     updateField('drukken', drukken.map((d, i) => (i === idx ? updated : d)));
   };
 
-  // Houd cac_per_ex per druk in sync met de afgeleide gemiddelde CAC (ad-spend / webshop-verkopen),
+  // Index van de eerste druk (laagste druknummer): bron van waarheid voor marketing.
+  const eersteDrukIdx = drukken.length
+    ? drukken.reduce((best, d, i) => (d.druknummer < drukken[best].druknummer ? i : best), 0)
+    : -1;
+
+  // Houd cac_per_ex op alle drukken in sync met de afgeleide gemiddelde CAC
+  // (ad-spend van de eerste druk / webshop-verkopen over de TOTALE oplage),
   // zodat de engine/marge (die cac_per_ex op het webshop-kanaal leest) klopt.
   useEffect(() => {
+    if (eersteDrukIdx < 0) return;
+    const eerste = drukken[eersteDrukIdx];
+    const ad = (eerste.marketing_onderdelen ?? []).find(o => o.id === 'ad_spend');
+    // Alleen afleiden zodra er ad-spend is toegewezen. Is Ad-spend € 0
+    // (o.a. bestaande titels), dan laten we een reeds ingevulde cac_per_ex
+    // staan i.p.v. 'm naar 0 te overschrijven.
+    if (!ad || ad.toegewezen <= 0) return;
+    const totaleOplage = drukken.reduce((s, d) => s + d.oplage, 0);
+    const webshopVerkopen = verdeling.webshop * totaleOplage;
+    const derived = webshopVerkopen > 0 ? ad.toegewezen / webshopVerkopen : 0;
     let changed = false;
     const next = drukken.map(d => {
-      const ad = (d.marketing_onderdelen ?? []).find(o => o.id === 'ad_spend');
-      // Alleen afleiden zodra er ad-spend is toegewezen. Is Ad-spend € 0
-      // (o.a. bestaande titels), dan laten we een reeds ingevulde cac_per_ex
-      // staan i.p.v. 'm naar 0 te overschrijven.
-      if (!ad || ad.toegewezen <= 0) return d;
-      const webshopVerkopen = verdeling.webshop * d.oplage;
-      const derived = webshopVerkopen > 0 ? ad.toegewezen / webshopVerkopen : 0;
       if (Math.abs((d.cac_per_ex ?? 0) - derived) > 1e-6) { changed = true; return { ...d, cac_per_ex: derived }; }
       return d;
     });
@@ -92,24 +101,19 @@ export function CalculatieForm({
         </Section>
       ))}
 
-      {/* ─── MARKETING — budgetplanner per druk ─── */}
+      {/* ─── MARKETING — één budgetplanner voor de hele titel (totale oplage) ─── */}
       <GroupLabel>Marketing</GroupLabel>
 
-      {drukken.map((druk, idx) => (
-        <Section
-          key={`mkt-${idx}`}
-          title={`${druk.druknummer}e druk`}
-          subtitle={`${druk.oplage.toLocaleString('nl-NL')} ex`}
-          defaultOpen={idx === 0}
-        >
+      {eersteDrukIdx >= 0 && (
+        <Section title="Marketingbudget" defaultOpen>
           <MarketingPlannerSection
-            druk={druk}
-            onDrukChange={updated => updateDruk(idx, updated)}
+            druk={drukken[eersteDrukIdx]}
+            onDrukChange={updated => updateDruk(eersteDrukIdx, updated)}
             titelInput={titelInput}
             verdeling={verdeling}
           />
         </Section>
-      ))}
+      )}
 
       {/* ─── VERKOOPKANALEN ─── */}
       <GroupLabel>Verkoopkanalen</GroupLabel>
