@@ -1,7 +1,15 @@
 import { useState } from 'react';
 import type { TitelInput, DrukConfig, MarketingOnderdeel } from '../../api/types';
 import { berekenMarketingBudget, berekenGemiddeldeCac, generateOnderdeelId, AD_SPEND_ID, type Verdeling } from '../../lib/marketing';
-import { Plus, X, ChevronRight, ChevronDown } from 'lucide-react';
+import { Plus, X, ChevronRight, ChevronDown, Info } from 'lucide-react';
+
+const TRECHTER_UITLEG =
+  'Trechter: Toegewezen ≥ Committed ≥ Besteed.\n' +
+  '• Toegewezen = budget dat je aan dit onderdeel toewijst (de bovengrens).\n' +
+  '• Committed = daarvan al toegezegd/vastgelegd — INCLUSIEF wat al besteed is.\n' +
+  '• Besteed = daarvan al betaald (zit binnen committed).\n' +
+  'Je telt committed en besteed dus niet op: besteed zit al in committed.\n' +
+  "Per balkje lees je: committed / toegewezen.";
 
 interface Props {
   druk: DrukConfig;
@@ -117,7 +125,10 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
         <div key={groep.key} className="space-y-1">
           <div className="flex items-baseline justify-between gap-2">
             <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-primary)]">{groep.label}</div>
-            <div className="text-[10px] text-[var(--text-secondary)] shrink-0">committed / toegewezen</div>
+            <span title={TRECHTER_UITLEG} className="flex items-center gap-1 shrink-0 text-[10px] text-[var(--text-secondary)] cursor-help">
+              committed / toegewezen
+              <Info size={12} className="text-[var(--text-secondary)]" />
+            </span>
           </div>
           {onderdelen.filter(o => o.groep === groep.key).map(o => {
             const isOpen = open.has(o.id);
@@ -137,7 +148,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                     <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
                       <input value={o.naam} placeholder="Naam onderdeel" onChange={e => patchNaam(o.id, e.target.value)} className={numCls} />
                       <div>
-                        <label className="block text-[10px] text-[var(--text-primary)] mb-0.5">Toegewezen €</label>
+                        <label title="Budget dat je aan dit onderdeel toewijst (de bovengrens)." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Toegewezen €</label>
                         <div className="flex items-center">
                           <span className="text-xs text-[var(--text-secondary)] pr-1">€</span>
                           <input type="number" value={Math.round(o.toegewezen) || ''} step={50} onChange={e => patchNum(o.id, 'toegewezen', parseFloat(e.target.value) || 0)} className={numCls} />
@@ -145,11 +156,11 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-[var(--text-primary)] mb-0.5">Committed €</label>
+                          <label title="Al toegezegd/vastgelegd — inclusief het al bestede deel. Kan niet hoger dan toegewezen." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Committed €</label>
                           <input type="number" value={Math.round(o.committed) || ''} step={50} onChange={e => patchNum(o.id, 'committed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-[var(--text-primary)] mb-0.5">Besteed €</label>
+                          <label title="Al betaald. Zit binnen committed (committed en besteed tel je niet op)." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Besteed €</label>
                           <input type="number" value={Math.round(o.besteed) || ''} step={50} onChange={e => patchNum(o.id, 'besteed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                       </div>
