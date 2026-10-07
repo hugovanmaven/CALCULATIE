@@ -60,16 +60,16 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
     <div className="space-y-3">
       <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5">
         <div>
-          <div className="text-[11px] uppercase tracking-wide text-[var(--text-secondary)]">Berekend marketingbudget</div>
+          <div className="text-[11px] uppercase tracking-wide text-[var(--text-primary)]">Berekend marketingbudget</div>
           <div className="text-xl font-semibold text-[var(--text-primary)]">€ {euro(budget)}</div>
         </div>
         <div className="text-right">
-          <label className="block text-[11px] text-[var(--text-secondary)] mb-0.5">% van oplage</label>
+          <label className="block text-[11px] text-[var(--text-primary)] mb-0.5">% van oplage</label>
           <div className="flex items-center">
             <input type="number" value={pct} step={1} min={0} max={100}
               onChange={e => onDrukChange({ ...druk, marketing_budget_pct: (parseFloat(e.target.value) || 0) / 100 })}
               className="w-14 px-2 py-1 text-sm border border-[var(--border)] rounded-l bg-[var(--bg-primary)] text-[var(--text-primary)]" />
-            <span className="inline-flex items-center px-2 py-1 text-xs text-[var(--text-tertiary)] bg-[var(--bg-secondary)] border border-l-0 border-[var(--border)] rounded-r">%</span>
+            <span className="inline-flex items-center px-2 py-1 text-xs text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-l-0 border-[var(--border)] rounded-r">%</span>
           </div>
         </div>
       </div>
@@ -95,7 +95,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
               <div className="h-full" style={{ width: `${wCommitted}%`, backgroundColor: 'var(--accent)', opacity: 0.6 }} title={`Toegezegd, nog te betalen € ${euro(Math.max(0, totCommitted - totBesteed))}`} />
               <div className="h-full" style={{ width: `${wToegewezen}%`, backgroundColor: 'var(--accent)', opacity: 0.3 }} title={`Toegewezen, nog niet toegezegd € ${euro(Math.max(0, totToegewezen - totCommitted))}`} />
             </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-secondary)]">
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-primary)]">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)' }} /> Besteed € {euro(totBesteed)}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)', opacity: 0.6 }} /> Committed € {euro(totCommitted)}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)', opacity: 0.3 }} /> Toegewezen € {euro(totToegewezen)}</span>
@@ -104,7 +104,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
             <div className="grid grid-cols-3 gap-1 text-center pt-1">
               {stat.map(s => (
                 <div key={s.label} className="rounded bg-[var(--bg-secondary)] px-1 py-1.5">
-                  <div className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] leading-tight">{s.label}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-[var(--text-primary)] leading-tight">{s.label}</div>
                   <div className={`text-sm font-bold ${s.val < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>€ {euro(s.val)}</div>
                 </div>
               ))}
@@ -115,7 +115,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
 
       {GROEPEN.map(groep => (
         <div key={groep.key} className="space-y-1">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">{groep.label}</div>
+          <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-primary)]">{groep.label}</div>
           {onderdelen.filter(o => o.groep === groep.key).map(o => {
             const isOpen = open.has(o.id);
             // Trechter: committed (incl. besteed) zit ín toegewezen.
@@ -126,41 +126,41 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
               <div key={o.id}>
                 <div className="rounded border border-[var(--border)]">
                   <button type="button" onClick={() => toggle(o.id)} className="w-full flex items-center gap-2 px-2 py-1.5 text-left">
-                    {isOpen ? <ChevronDown size={14} className="text-[var(--text-tertiary)] shrink-0" /> : <ChevronRight size={14} className="text-[var(--text-tertiary)] shrink-0" />}
+                    {isOpen ? <ChevronDown size={14} className="text-[var(--text-secondary)] shrink-0" /> : <ChevronRight size={14} className="text-[var(--text-secondary)] shrink-0" />}
                     <span className="text-sm text-[var(--text-primary)] truncate flex-1">{o.naam || 'Naamloos'}</span>
-                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>€ {euro(o.committed)} / € {euro(o.toegewezen)}</span>
+                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-primary)]'}`}>€ {euro(o.committed)} / € {euro(o.toegewezen)}</span>
                   </button>
                   {isOpen && (
                     <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
                       <input value={o.naam} placeholder="Naam onderdeel" onChange={e => patchNaam(o.id, e.target.value)} className={numCls} />
                       <div>
-                        <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Toegewezen €</label>
+                        <label className="block text-[10px] text-[var(--text-primary)] mb-0.5">Toegewezen €</label>
                         <div className="flex items-center">
-                          <span className="text-xs text-[var(--text-tertiary)] pr-1">€</span>
+                          <span className="text-xs text-[var(--text-secondary)] pr-1">€</span>
                           <input type="number" value={Math.round(o.toegewezen) || ''} step={50} onChange={e => patchNum(o.id, 'toegewezen', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Committed €</label>
+                          <label className="block text-[10px] text-[var(--text-primary)] mb-0.5">Committed €</label>
                           <input type="number" value={Math.round(o.committed) || ''} step={50} onChange={e => patchNum(o.id, 'committed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                         <div>
-                          <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">Besteed €</label>
+                          <label className="block text-[10px] text-[var(--text-primary)] mb-0.5">Besteed €</label>
                           <input type="number" value={Math.round(o.besteed) || ''} step={50} onChange={e => patchNum(o.id, 'besteed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                       </div>
-                      <div className={`text-xs ${nogToeTeZeggen < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>
+                      <div className={`text-xs ${nogToeTeZeggen < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-primary)]'}`}>
                         Nog toe te zeggen: € {euro(nogToeTeZeggen)}
                       </div>
-                      <button type="button" onClick={() => removeRij(o.id)} className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-red-500">
+                      <button type="button" onClick={() => removeRij(o.id)} className="flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-red-500">
                         <X size={12} /> verwijderen
                       </button>
                     </div>
                   )}
                 </div>
                 {isAdSpend && (
-                  <div className="text-[11px] text-[var(--text-secondary)] px-2 pt-0.5">
+                  <div className="text-[11px] text-[var(--text-primary)] px-2 pt-0.5">
                     Gemiddelde CAC ≈ {webshopVerkopen > 0 ? `€ ${gemiddeldeCac.toFixed(2)}` : '—'} per webshop-aankoop
                   </div>
                 )}
