@@ -115,7 +115,10 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
 
       {GROEPEN.map(groep => (
         <div key={groep.key} className="space-y-1">
-          <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-primary)]">{groep.label}</div>
+          <div className="flex items-baseline justify-between gap-2">
+            <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-primary)]">{groep.label}</div>
+            <div className="text-[10px] text-[var(--text-secondary)] shrink-0">committed / toegewezen</div>
+          </div>
           {onderdelen.filter(o => o.groep === groep.key).map(o => {
             const isOpen = open.has(o.id);
             // Trechter: committed (incl. besteed) zit ín toegewezen.
