@@ -118,9 +118,9 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
           <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">{groep.label}</div>
           {onderdelen.filter(o => o.groep === groep.key).map(o => {
             const isOpen = open.has(o.id);
-            const verbruikt = o.committed + o.besteed;
-            const over = verbruikt > o.toegewezen && o.toegewezen > 0;
-            const teBestedenRij = o.toegewezen - o.committed - o.besteed;
+            // Trechter: committed (incl. besteed) zit ín toegewezen.
+            const over = o.committed > o.toegewezen && o.toegewezen > 0;
+            const nogToeTeZeggen = o.toegewezen - o.committed;
             const isAdSpend = o.id === AD_SPEND_ID;
             return (
               <div key={o.id}>
@@ -128,7 +128,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                   <button type="button" onClick={() => toggle(o.id)} className="w-full flex items-center gap-2 px-2 py-1.5 text-left">
                     {isOpen ? <ChevronDown size={14} className="text-[var(--text-tertiary)] shrink-0" /> : <ChevronRight size={14} className="text-[var(--text-tertiary)] shrink-0" />}
                     <span className="text-sm text-[var(--text-primary)] truncate flex-1">{o.naam || 'Naamloos'}</span>
-                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>€ {euro(verbruikt)} / € {euro(o.toegewezen)}</span>
+                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>€ {euro(o.committed)} / € {euro(o.toegewezen)}</span>
                   </button>
                   {isOpen && (
                     <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
@@ -150,8 +150,8 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                           <input type="number" value={Math.round(o.besteed) || ''} step={50} onChange={e => patchNum(o.id, 'besteed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                       </div>
-                      <div className={`text-xs ${teBestedenRij < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>
-                        Te besteden: € {euro(teBestedenRij)}
+                      <div className={`text-xs ${nogToeTeZeggen < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-secondary)]'}`}>
+                        Nog toe te zeggen: € {euro(nogToeTeZeggen)}
                       </div>
                       <button type="button" onClick={() => removeRij(o.id)} className="flex items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-red-500">
                         <X size={12} /> verwijderen
