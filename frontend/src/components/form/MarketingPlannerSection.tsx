@@ -60,11 +60,11 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
     <div className="space-y-3">
       <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5">
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">Berekend marketingbudget</div>
+          <div className="text-[11px] uppercase tracking-wide text-[var(--text-secondary)]">Berekend marketingbudget</div>
           <div className="text-xl font-semibold text-[var(--text-primary)]">€ {euro(budget)}</div>
         </div>
         <div className="text-right">
-          <label className="block text-[10px] text-[var(--text-secondary)] mb-0.5">% van oplage</label>
+          <label className="block text-[11px] text-[var(--text-secondary)] mb-0.5">% van oplage</label>
           <div className="flex items-center">
             <input type="number" value={pct} step={1} min={0} max={100}
               onChange={e => onDrukChange({ ...druk, marketing_budget_pct: (parseFloat(e.target.value) || 0) / 100 })}
@@ -95,7 +95,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
               <div className="h-full" style={{ width: `${wCommitted}%`, backgroundColor: 'var(--accent)', opacity: 0.6 }} title={`Toegezegd, nog te betalen € ${euro(Math.max(0, totCommitted - totBesteed))}`} />
               <div className="h-full" style={{ width: `${wToegewezen}%`, backgroundColor: 'var(--accent)', opacity: 0.3 }} title={`Toegewezen, nog niet toegezegd € ${euro(Math.max(0, totToegewezen - totCommitted))}`} />
             </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-[var(--text-tertiary)]">
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-[var(--text-secondary)]">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)' }} /> Besteed € {euro(totBesteed)}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)', opacity: 0.6 }} /> Committed € {euro(totCommitted)}</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: 'var(--accent)', opacity: 0.3 }} /> Toegewezen € {euro(totToegewezen)}</span>
@@ -104,8 +104,8 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
             <div className="grid grid-cols-3 gap-1 text-center pt-1">
               {stat.map(s => (
                 <div key={s.label} className="rounded bg-[var(--bg-secondary)] px-1 py-1.5">
-                  <div className="text-[9px] uppercase tracking-wide text-[var(--text-tertiary)] leading-tight">{s.label}</div>
-                  <div className={`text-xs font-semibold ${s.val < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>€ {euro(s.val)}</div>
+                  <div className="text-[10px] uppercase tracking-wide text-[var(--text-secondary)] leading-tight">{s.label}</div>
+                  <div className={`text-sm font-bold ${s.val < 0 ? 'text-red-500' : 'text-[var(--text-primary)]'}`}>€ {euro(s.val)}</div>
                 </div>
               ))}
             </div>
@@ -160,7 +160,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                   )}
                 </div>
                 {isAdSpend && (
-                  <div className="text-[10px] text-[var(--text-tertiary)] px-2 pt-0.5">
+                  <div className="text-[11px] text-[var(--text-secondary)] px-2 pt-0.5">
                     Gemiddelde CAC ≈ {webshopVerkopen > 0 ? `€ ${gemiddeldeCac.toFixed(2)}` : '—'} per webshop-aankoop
                   </div>
                 )}
