@@ -4,12 +4,11 @@ import { berekenMarketingBudget, berekenGemiddeldeCac, generateOnderdeelId, AD_S
 import { Plus, X, ChevronRight, ChevronDown, Info } from 'lucide-react';
 
 const TRECHTER_UITLEG =
-  'Trechter: Toegewezen ≥ Committed ≥ Besteed.\n' +
-  '• Toegewezen = budget dat je aan dit onderdeel toewijst (de bovengrens).\n' +
-  '• Committed = daarvan al toegezegd/vastgelegd — INCLUSIEF wat al besteed is.\n' +
-  '• Besteed = daarvan al betaald (zit binnen committed).\n' +
-  'Je telt committed en besteed dus niet op: besteed zit al in committed.\n' +
-  "Per balkje lees je: committed / toegewezen.";
+  'Toegewezen = budget dat je aan dit onderdeel toewijst.\n' +
+  'Besteed = daarvan al betaald.\n' +
+  'Te besteden = toegewezen − besteed (wat je nog kunt uitgeven).\n' +
+  'Committed = (optioneel) al toegezegd/vastgelegd; ligt tussen besteed en toegewezen in.\n' +
+  'Per balkje lees je: besteed / toegewezen.';
 
 interface Props {
   druk: DrukConfig;
@@ -88,9 +87,12 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
         const toegewezenNietBesteed = totToegewezen - totBesteed;
         const totaalNogUitTeGeven = budget - totBesteed;
         const base = Math.max(budget, totToegewezen, 1);
+        // Committed klemmen tussen besteed en toegewezen zodat de balk nooit
+        // dubbeltelt als committed < besteed is ingevuld.
+        const cEff = Math.min(Math.max(totCommitted, totBesteed), totToegewezen);
         const wBesteed = (totBesteed / base) * 100;
-        const wCommitted = (Math.max(0, totCommitted - totBesteed) / base) * 100;
-        const wToegewezen = (Math.max(0, totToegewezen - totCommitted) / base) * 100;
+        const wCommitted = ((cEff - totBesteed) / base) * 100;
+        const wToegewezen = ((totToegewezen - cEff) / base) * 100;
         const stat = [
           { label: 'Nog toe te wijzen', val: nogToeTeWijzen },
           { label: 'Toegewezen, nog niet besteed', val: toegewezenNietBesteed },
@@ -125,16 +127,19 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
         <div key={groep.key} className="space-y-1">
           <div className="flex items-baseline justify-between gap-2">
             <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-primary)]">{groep.label}</div>
-            <span title={TRECHTER_UITLEG} className="flex items-center gap-1 shrink-0 text-[10px] text-[var(--text-secondary)] cursor-help">
-              committed / toegewezen
+            <span className="group relative flex items-center gap-1 shrink-0 text-[10px] text-[var(--text-secondary)] cursor-help">
+              besteed / toegewezen
               <Info size={12} className="text-[var(--text-secondary)]" />
+              <span className="pointer-events-none absolute right-0 top-5 z-30 hidden group-hover:block w-64 rounded-md border border-[var(--border)] bg-[var(--bg-secondary)] p-2 text-[11px] font-normal normal-case tracking-normal text-[var(--text-primary)] shadow-lg whitespace-pre-line">
+                {TRECHTER_UITLEG}
+              </span>
             </span>
           </div>
           {onderdelen.filter(o => o.groep === groep.key).map(o => {
             const isOpen = open.has(o.id);
             // Trechter: committed (incl. besteed) zit ín toegewezen.
-            const over = o.committed > o.toegewezen && o.toegewezen > 0;
-            const nogToeTeZeggen = o.toegewezen - o.committed;
+            const over = o.besteed > o.toegewezen && o.toegewezen > 0;
+            const teBesteden = o.toegewezen - o.besteed;
             const isAdSpend = o.id === AD_SPEND_ID;
             return (
               <div key={o.id}>
@@ -142,7 +147,7 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                   <button type="button" onClick={() => toggle(o.id)} className="w-full flex items-center gap-2 px-2 py-1.5 text-left">
                     {isOpen ? <ChevronDown size={14} className="text-[var(--text-secondary)] shrink-0" /> : <ChevronRight size={14} className="text-[var(--text-secondary)] shrink-0" />}
                     <span className="text-sm text-[var(--text-primary)] truncate flex-1">{o.naam || 'Naamloos'}</span>
-                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-primary)]'}`}>€ {euro(o.committed)} / € {euro(o.toegewezen)}</span>
+                    <span className={`text-xs tabular-nums ${over ? 'text-red-500 font-semibold' : 'text-[var(--text-primary)]'}`}>€ {euro(o.besteed)} / € {euro(o.toegewezen)}</span>
                   </button>
                   {isOpen && (
                     <div className="px-2 pb-2 pt-1 space-y-2 border-t border-[var(--border)]">
@@ -156,16 +161,16 @@ export function MarketingPlannerSection({ druk, onDrukChange, titelInput, verdel
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label title="Al toegezegd/vastgelegd — inclusief het al bestede deel. Kan niet hoger dan toegewezen." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Committed €</label>
+                          <label title="Al toegezegd/vastgelegd (optioneel). Ligt tussen besteed en toegewezen." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Committed €</label>
                           <input type="number" value={Math.round(o.committed) || ''} step={50} onChange={e => patchNum(o.id, 'committed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                         <div>
-                          <label title="Al betaald. Zit binnen committed (committed en besteed tel je niet op)." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Besteed €</label>
+                          <label title="Al betaald. 'Te besteden' = toegewezen − besteed." className="block text-[10px] text-[var(--text-primary)] mb-0.5 cursor-help">Besteed €</label>
                           <input type="number" value={Math.round(o.besteed) || ''} step={50} onChange={e => patchNum(o.id, 'besteed', parseFloat(e.target.value) || 0)} className={numCls} />
                         </div>
                       </div>
-                      <div className={`text-xs ${nogToeTeZeggen < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-primary)]'}`}>
-                        Nog toe te zeggen: € {euro(nogToeTeZeggen)}
+                      <div className={`text-xs ${teBesteden < 0 ? 'text-red-500 font-semibold' : 'text-[var(--text-primary)]'}`}>
+                        Te besteden: € {euro(teBesteden)}
                       </div>
                       <button type="button" onClick={() => removeRij(o.id)} className="flex items-center gap-1 text-xs text-[var(--text-secondary)] hover:text-red-500">
                         <X size={12} /> verwijderen
